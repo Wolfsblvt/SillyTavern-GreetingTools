@@ -5,7 +5,7 @@ import { t } from '../../../i18n.js';
 import { debounce, getStringHash } from '../../../utils.js';
 import { debounce_timeout } from '../../../constants.js';
 import { EXTENSION_NAME } from './index.js';
-import { generateGreetingId, getGreetingToolsData, saveGreetingToolsData } from './greeting-tools-popup.js';
+import { generateGreetingId, getGreetingToolsData, saveGreetingToolsData } from './greeting-tools.js';
 
 /**
  * @typedef {Object} GreetingEditorState

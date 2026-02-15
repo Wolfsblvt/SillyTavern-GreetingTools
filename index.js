@@ -1,5 +1,5 @@
 import { eventSource, event_types } from '../../../../script.js';
-import { setupButtonIntercept } from './greeting-tools-popup.js';
+import { setupButtonIntercept } from './greeting-tools.js';
 
 export const EXTENSION_KEY = 'greeting_tools';
 export const EXTENSION_NAME = 'SillyTavern-GreetingTools';
