@@ -1,0 +1,7 @@
+/* SillyTavern-GreetingTools Styles */
+
+/* Greyed out index number when custom title is set */
+.greeting-tools-index {
+    font-weight: normal;
+    opacity: 0.5;
+}
