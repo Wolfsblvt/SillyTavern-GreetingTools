@@ -16,6 +16,7 @@ import { EXTENSION_NAME } from './index.js';
  * @property {string} id - Unique greeting ID
  * @property {string} content - Greeting content
  * @property {string} title - Custom title
+ * @property {string} description - Optional description
  * @property {number} contentHash - Hash of content
  */
 
@@ -77,11 +78,13 @@ function initializeGreetingStates() {
         // Try to find existing metadata by content hash
         let matchedId = null;
         let matchedTitle = '';
+        let matchedDescription = '';
 
         for (const [gId, meta] of Object.entries(metadata.greetings)) {
             if (meta.contentHash === contentHash) {
                 matchedId = gId;
                 matchedTitle = meta.title ?? '';
+                matchedDescription = meta.description ?? '';
                 break;
             }
         }
@@ -90,6 +93,7 @@ function initializeGreetingStates() {
             id: matchedId ?? generateGreetingId(),
             content,
             title: matchedTitle,
+            description: matchedDescription,
             contentHash,
         });
     }
@@ -111,6 +115,7 @@ async function saveAllMetadata() {
         const state = greetingStates[i];
         data.greetings[state.id] = {
             title: state.title,
+            description: state.description,
             contentHash: state.contentHash,
         };
         data.indexMap[i] = state.id;
@@ -144,7 +149,7 @@ function updateHintVisibility(container) {
 }
 
 /**
- * Updates the title display for a greeting block.
+ * Updates the title and description display for a greeting block.
  * @param {HTMLElement} block
  * @param {GreetingState} state
  * @param {number} index
@@ -152,15 +157,22 @@ function updateHintVisibility(container) {
 function updateBlockTitle(block, state, index) {
     const titleSpan = block.querySelector('.greeting-tools-title');
     const indexSpan = block.querySelector('.greeting_index');
-    if (!(titleSpan instanceof HTMLElement) || !(indexSpan instanceof HTMLElement)) return;
+    const descSpan = block.querySelector('.greeting-tools-description');
 
-    const displayIndex = index + 1;
-    if (state.title) {
-        titleSpan.textContent = `${state.title} `;
-        indexSpan.innerHTML = `<span class="greeting-tools-index">(#${displayIndex})</span>`;
-    } else {
-        titleSpan.textContent = 'Alternate Greeting #';
-        indexSpan.textContent = String(displayIndex);
+    if (titleSpan instanceof HTMLElement && indexSpan instanceof HTMLElement) {
+        const displayIndex = index + 1;
+        if (state.title) {
+            titleSpan.textContent = `${state.title} `;
+            indexSpan.innerHTML = `<span class="greeting-tools-index">(#${displayIndex})</span>`;
+        } else {
+            titleSpan.textContent = 'Alternate Greeting #';
+            indexSpan.textContent = String(displayIndex);
+        }
+    }
+
+    if (descSpan instanceof HTMLElement) {
+        descSpan.textContent = state.description || '';
+        descSpan.style.display = state.description ? '' : 'none';
     }
 }
 
@@ -278,7 +290,7 @@ function createGreetingBlock(state, index, list) {
 }
 
 /**
- * Handles editing a greeting title.
+ * Handles editing a greeting title and description.
  * @param {string} greetingId
  * @param {HTMLElement} list
  */
@@ -287,14 +299,32 @@ async function handleEditTitle(greetingId, list) {
     if (stateIndex === -1) return;
 
     const state = greetingStates[stateIndex];
-    const result = await Popup.show.input(
-        'Edit Greeting Title',
-        'Give this greeting a memorable title to help identify it.',
-        state.title,
-    );
+
+    const content = document.createElement('div');
+    content.innerHTML = `
+        <h3 data-i18n="Edit Greeting Details">Edit Greeting Details</h3>
+        <p data-i18n="Give this greeting a memorable title and optional description.">Give this greeting a memorable title and optional description.</p>
+    `;
+
+    const popup = new Popup(content, POPUP_TYPE.INPUT, state.title, {
+        rows: 1,
+        customInputs: [
+            {
+                id: 'greeting-description-input',
+                label: t`Description` + ' / ' + t`Summary`,
+                type: 'textarea',
+                rows: 3,
+                defaultState: state.description,
+                tooltip: t`Optional description or summary`,
+            },
+        ],
+    });
+
+    const result = await popup.show();
 
     if (result !== null) {
-        state.title = result.trim();
+        state.title = String(result).trim();
+        state.description = String(popup.inputResults?.get('greeting-description-input') ?? '').trim();
         refreshAllBlocks(list);
         saveAllMetadataDebounced();
     }
@@ -360,6 +390,7 @@ function handleAdd(list) {
         id: generateGreetingId(),
         content: '',
         title: '',
+        description: '',
         contentHash: getStringHash(''),
     };
 

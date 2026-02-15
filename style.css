@@ -5,3 +5,20 @@
     font-weight: normal;
     opacity: 0.5;
 }
+
+/* Description text below title row in summary - forces onto new line in flex container */
+.greeting-tools-description {
+    flex-basis: 100%;
+    order: 99;
+    font-size: 0.9em;
+    opacity: 0.7;
+    font-style: italic;
+    margin-bottom: 4px;
+    text-align: left;
+    white-space: pre-wrap;
+}
+
+/* Ensure parent flex container wraps for description */
+.greeting-tools-block .title_restorable {
+    flex-wrap: wrap;
+}

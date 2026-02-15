@@ -7,7 +7,7 @@ import { EXTENSION_KEY } from './index.js';
 /**
  * @typedef {Object} GreetingMetadata
  * @property {string} [title] - User-defined title for the greeting
- * @property {string} [summary] - Optional summary (for future use)
+ * @property {string} [description] - Optional description (for future use)
  * @property {number} [contentHash] - Hash of content when metadata was last set
  * @property {number} [lastUsed] - Timestamp of last use (for future tracking)
  */
@@ -176,7 +176,7 @@ export function getGreetingTitle(index, { chid = null } = {}) {
  */
 function isMetadataEmpty(metadata) {
     if (!metadata) return true;
-    return !metadata.title && !metadata.summary;
+    return !metadata.title && !metadata.description;
 }
 
 /**
