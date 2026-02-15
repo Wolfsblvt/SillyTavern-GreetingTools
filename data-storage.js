@@ -6,6 +6,7 @@ import { EXTENSION_KEY } from './index.js';
 
 /**
  * @typedef {Object} GreetingMetadata
+ * @property {string} [id] - Unique greeting ID
  * @property {string} [title] - User-defined title for the greeting
  * @property {string} [description] - Optional description (for future use)
  * @property {number} [contentHash] - Hash of content when metadata was last set
@@ -18,6 +19,7 @@ import { EXTENSION_KEY } from './index.js';
 
 /**
  * @typedef {Object} GreetingToolsData
+ * @property {GreetingMetadata} mainGreeting - Main greeting metadata
  * @property {{ [greetingId: string]: GreetingMetadata }} greetings - Greeting metadata keyed by unique ID
  * @property {GreetingIndexMap} indexMap - Maps greeting index to greeting ID
  */
@@ -65,18 +67,19 @@ export function getGreetingToolsData({ chid = null } = {}) {
     const id = chid ?? this_chid;
     const character = characters[id];
     if (!character) {
-        return { greetings: {}, indexMap: {} };
+        return { greetings: {}, indexMap: {}, mainGreeting: {} };
     }
 
     const extensions = character?.data?.extensions;
     if (!extensions?.[EXTENSION_KEY]) {
-        return { greetings: {}, indexMap: {} };
+        return { greetings: {}, indexMap: {}, mainGreeting: {} };
     }
 
     const data = extensions[EXTENSION_KEY];
     return {
         greetings: data.greetings ?? {},
         indexMap: data.indexMap ?? {},
+        mainGreeting: data.mainGreeting ?? {},
     };
 }
 

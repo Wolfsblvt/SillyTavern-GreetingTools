@@ -22,3 +22,7 @@
 .greeting-tools-block .title_restorable {
     flex-wrap: wrap;
 }
+
+.alternate_greetings_list.greeting-tools-list {
+    overflow-y: auto; /* No automatic scrollbar, looks weird */
+}
