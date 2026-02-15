@@ -2,12 +2,13 @@ import { characters, menu_type, create_save, createOrEditCharacter } from '../..
 import { renderExtensionTemplateAsync } from '../../../extensions.js';
 import { Popup, POPUP_TYPE } from '../../../popup.js';
 import { t } from '../../../i18n.js';
+import { debounce, getStringHash } from '../../../utils.js';
+import { debounce_timeout } from '../../../constants.js';
 import {
     getGreetingToolsData,
     saveGreetingToolsData,
     generateGreetingId,
 } from './data-storage.js';
-import { getStringHash } from '/scripts/utils.js';
 import { EXTENSION_NAME } from './index.js';
 
 /**
@@ -119,6 +120,11 @@ async function saveAllMetadata() {
 }
 
 /**
+ * Debounced version of saveAllMetadata for automatic saving on changes.
+ */
+const saveAllMetadataDebounced = debounce(saveAllMetadata, debounce_timeout.relaxed);
+
+/**
  * Syncs greeting content back to character data.
  */
 function syncGreetingsToCharacter() {
@@ -204,6 +210,7 @@ function createGreetingBlock(state, index, list) {
                 greetingStates[stateIndex].content = textarea.value;
                 greetingStates[stateIndex].contentHash = getStringHash(textarea.value);
                 syncGreetingsToCharacter();
+                saveAllMetadataDebounced();
             }
         });
     }
@@ -289,6 +296,7 @@ async function handleEditTitle(greetingId, list) {
     if (result !== null) {
         state.title = result.trim();
         refreshAllBlocks(list);
+        saveAllMetadataDebounced();
     }
 }
 
@@ -310,6 +318,7 @@ function handleMove(greetingId, direction, list) {
 
     // Sync to character
     syncGreetingsToCharacter();
+    saveAllMetadataDebounced();
 
     // Re-render the list
     renderGreetingsList(list);
@@ -336,6 +345,7 @@ async function handleDelete(greetingId, list) {
 
     // Sync to character
     syncGreetingsToCharacter();
+    saveAllMetadataDebounced();
 
     // Re-render the list
     renderGreetingsList(list);
@@ -355,6 +365,7 @@ function handleAdd(list) {
 
     greetingStates.push(newState);
     syncGreetingsToCharacter();
+    saveAllMetadataDebounced();
 
     // Append the new block
     const block = createGreetingBlock(newState, greetingStates.length - 1, list);
