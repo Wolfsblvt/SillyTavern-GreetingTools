@@ -215,21 +215,26 @@ function updateHintVisibility(container) {
  * Updates the title and description display for a greeting block.
  * @param {HTMLElement} block
  * @param {GreetingState} state
- * @param {number} index
+ * @param {{ index?: number, isMain?: boolean }} [options={}]
  */
-function updateBlockTitle(block, state, index) {
+function updateBlockTitle(block, state, { index = -1, isMain = false } = {}) {
     const titleSpan = block.querySelector('.greeting-tools-title');
     const indexSpan = block.querySelector('.greeting_index');
     const descSpan = block.querySelector('.greeting-tools-description');
 
     if (titleSpan instanceof HTMLElement && indexSpan instanceof HTMLElement) {
-        const displayIndex = index + 1;
-        if (state.title) {
-            titleSpan.textContent = `${state.title} `;
-            indexSpan.innerHTML = `<span class="greeting-tools-index">(#${displayIndex})</span>`;
+        if (isMain) {
+            titleSpan.textContent = state.title || t`Main Greeting`;
+            indexSpan.textContent = '';
         } else {
-            titleSpan.textContent = 'Alternate Greeting #';
-            indexSpan.textContent = String(displayIndex);
+            const displayIndex = index + 1;
+            if (state.title) {
+                titleSpan.textContent = `${state.title} `;
+                indexSpan.innerHTML = `<span class="greeting-tools-index">(#${displayIndex})</span>`;
+            } else {
+                titleSpan.textContent = 'Alternate Greeting #';
+                indexSpan.textContent = String(displayIndex);
+            }
         }
     }
 
@@ -237,6 +242,28 @@ function updateBlockTitle(block, state, index) {
         descSpan.textContent = state.description || '';
         descSpan.style.display = state.description ? '' : 'none';
     }
+}
+
+/**
+ * Sets up the expand/collapse toggle for a textarea.
+ * @param {Element | null} expandBtn
+ * @param {HTMLTextAreaElement} textarea
+ */
+function setupExpandButton(expandBtn, textarea) {
+    if (!expandBtn) return;
+    expandBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (textarea.rows === 12) {
+            textarea.rows = 30;
+            expandBtn.classList.remove('fa-maximize');
+            expandBtn.classList.add('fa-minimize');
+        } else {
+            textarea.rows = 12;
+            expandBtn.classList.remove('fa-minimize');
+            expandBtn.classList.add('fa-maximize');
+        }
+    });
 }
 
 /**
@@ -250,7 +277,7 @@ function refreshAllBlocks(list) {
         const state = greetingStates[index];
         if (state) {
             block.dataset.greetingId = state.id;
-            updateBlockTitle(block, state, index);
+            updateBlockTitle(block, state, { index });
         }
     });
 }
@@ -271,7 +298,7 @@ function createGreetingBlock(state, index, list) {
     block.dataset.greetingId = state.id;
 
     // Set title
-    updateBlockTitle(block, state, index);
+    updateBlockTitle(block, state, { index });
 
     // Set textarea content
     const textarea = block.querySelector('.greeting-tools-textarea');
@@ -288,6 +315,9 @@ function createGreetingBlock(state, index, list) {
                 saveAllMetadataDebounced();
             }
         });
+
+        // Expand editor button
+        setupExpandButton(block.querySelector('.editor_maximize'), textarea);
     }
 
     // Edit title button
@@ -297,25 +327,6 @@ function createGreetingBlock(state, index, list) {
             e.preventDefault();
             e.stopPropagation();
             await handleEditTitle(state.id, list);
-        });
-    }
-
-    // Expand editor button
-    const expandBtn = block.querySelector('.editor_maximize');
-    if (expandBtn && textarea instanceof HTMLTextAreaElement) {
-        expandBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            // Toggle expand - simple version
-            if (textarea.rows === 12) {
-                textarea.rows = 30;
-                expandBtn.classList.remove('fa-maximize');
-                expandBtn.classList.add('fa-minimize');
-            } else {
-                textarea.rows = 12;
-                expandBtn.classList.remove('fa-minimize');
-                expandBtn.classList.add('fa-maximize');
-            }
         });
     }
 
@@ -357,16 +368,11 @@ function createGreetingBlock(state, index, list) {
 }
 
 /**
- * Handles editing a greeting title and description.
- * @param {string} greetingId
- * @param {HTMLElement} list
+ * Shows the edit title/description popup for any greeting state.
+ * @param {GreetingState} state - The greeting state to edit
+ * @param {() => void} onSave - Callback to refresh UI after save
  */
-async function handleEditTitle(greetingId, list) {
-    const stateIndex = greetingStates.findIndex(s => s.id === greetingId);
-    if (stateIndex === -1) return;
-
-    const state = greetingStates[stateIndex];
-
+async function showEditTitlePopup(state, onSave) {
     const content = document.createElement('div');
     content.innerHTML = `
         <h3 data-i18n="Edit Greeting Details">Edit Greeting Details</h3>
@@ -393,9 +399,20 @@ async function handleEditTitle(greetingId, list) {
     if (typeof result === 'string') {
         state.title = result.trim();
         state.description = String(popup.inputResults?.get('greeting-description-input') ?? '').trim();
-        refreshAllBlocks(list);
+        onSave();
         saveAllMetadataDebounced();
     }
+}
+
+/**
+ * Handles editing a greeting title and description.
+ * @param {string} greetingId
+ * @param {HTMLElement} list
+ */
+async function handleEditTitle(greetingId, list) {
+    const state = greetingStates.find(s => s.id === greetingId);
+    if (!state) return;
+    await showEditTitlePopup(state, () => refreshAllBlocks(list));
 }
 
 /**
@@ -458,36 +475,7 @@ function swapMainWithFirstAlt(list) {
  */
 async function handleEditMainTitle() {
     if (!mainGreetingState) return;
-
-    const content = document.createElement('div');
-    content.innerHTML = `
-        <h3 data-i18n="Edit Greeting Details">Edit Greeting Details</h3>
-        <p data-i18n="Give this greeting a memorable title and optional description.">Give this greeting a memorable title and optional description.</p>
-    `;
-
-    const popup = new Popup(content, POPUP_TYPE.INPUT, mainGreetingState.title, {
-        rows: 1,
-        customInputs: [
-            {
-                id: 'greeting-description-input',
-                label: t`Description` + ' / ' + t`Summary`,
-                type: 'textarea',
-                rows: 3,
-                defaultState: mainGreetingState.description,
-                tooltip: t`Optional description or summary`,
-            },
-        ],
-    });
-
-    const result = await popup.show();
-
-    // For POPUP_TYPE.INPUT: result is input string on confirm, false on negative, null on cancel
-    if (typeof result === 'string') {
-        mainGreetingState.title = result.trim();
-        mainGreetingState.description = String(popup.inputResults?.get('greeting-description-input') ?? '').trim();
-        renderMainGreeting();
-        saveAllMetadataDebounced();
-    }
+    await showEditTitlePopup(mainGreetingState, renderMainGreeting);
 }
 
 /**
@@ -507,25 +495,8 @@ function renderMainGreeting() {
     block.classList.add('greeting-tools-main-block');
     block.dataset.greetingId = mainGreetingState.id;
 
-    // Update title display
-    const titleSpan = block.querySelector('.greeting-tools-title');
-    const indexSpan = block.querySelector('.greeting_index');
-    const descSpan = block.querySelector('.greeting-tools-description');
-
-    if (titleSpan instanceof HTMLElement && indexSpan instanceof HTMLElement) {
-        if (mainGreetingState.title) {
-            titleSpan.textContent = mainGreetingState.title;
-            indexSpan.textContent = '';
-        } else {
-            titleSpan.textContent = t`Main Greeting`;
-            indexSpan.textContent = '';
-        }
-    }
-
-    if (descSpan instanceof HTMLElement) {
-        descSpan.textContent = mainGreetingState.description || '';
-        descSpan.style.display = mainGreetingState.description ? '' : 'none';
-    }
+    // Update title display using shared helper
+    updateBlockTitle(block, mainGreetingState, { isMain: true });
 
     // Set textarea content
     const textarea = block.querySelector('.greeting-tools-textarea');
@@ -541,6 +512,9 @@ function renderMainGreeting() {
                 saveAllMetadataDebounced();
             }
         });
+
+        // Expand editor button
+        setupExpandButton(block.querySelector('.editor_maximize'), textarea);
     }
 
     // Edit title button
@@ -553,24 +527,6 @@ function renderMainGreeting() {
         });
     }
 
-    // Expand editor button
-    const expandBtn = block.querySelector('.editor_maximize');
-    if (expandBtn && textarea instanceof HTMLTextAreaElement) {
-        expandBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (textarea.rows === 12) {
-                textarea.rows = 30;
-                expandBtn.classList.remove('fa-maximize');
-                expandBtn.classList.add('fa-minimize');
-            } else {
-                textarea.rows = 12;
-                expandBtn.classList.remove('fa-minimize');
-                expandBtn.classList.add('fa-maximize');
-            }
-        });
-    }
-
     // Move up button - make invisible but keep space (for alignment)
     const moveUpBtn = block.querySelector('.greeting-tools-move-up');
     if (moveUpBtn instanceof HTMLElement) {
@@ -578,12 +534,9 @@ function renderMainGreeting() {
     }
 
     // Move down button - swap with first alt greeting
-    // Remove ST's greying class and ensure it's clickable
     const moveDownBtn = block.querySelector('.greeting-tools-move-down');
     if (moveDownBtn instanceof HTMLElement) {
         moveDownBtn.classList.remove('move_down_alternate_greeting');
-        moveDownBtn.style.filter = '';
-        moveDownBtn.style.opacity = '';
         moveDownBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
