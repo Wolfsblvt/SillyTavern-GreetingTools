@@ -2,7 +2,7 @@ import { characters, menu_type, this_chid } from '../../../../script.js';
 import { writeExtensionField } from '../../../extensions.js';
 import { t } from '../../../i18n.js';
 import { EXTENSION_KEY } from './index.js';
-import { GreetingToolsPopup } from './greeting-tools-ui.js';
+import { GreetingToolsPopup } from './greeting-tools-popup.js';
 
 /**
  * @typedef {Object} GreetingMetadata

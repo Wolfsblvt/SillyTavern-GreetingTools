@@ -7,6 +7,8 @@ import { debounce_timeout } from '../../../constants.js';
 import { EXTENSION_NAME } from './index.js';
 import { generateGreetingId, getGreetingToolsData, saveGreetingToolsData } from './greeting-tools.js';
 
+/** @typedef {import('./greeting-tools.js').GreetingToolsData} GreetingToolsData */
+
 /**
  * @typedef {Object} GreetingEditorState
  * @property {string} id - Unique greeting ID
@@ -21,7 +23,7 @@ import { generateGreetingId, getGreetingToolsData, saveGreetingToolsData } from 
  * Encapsulates all popup state, rendering, and event handling.
  */
 export class GreetingToolsPopup {
-    /** @type {string | undefined} */
+    /** @type {string} */
     #chid;
 
     /** @type {Popup | null} */
@@ -43,9 +45,19 @@ export class GreetingToolsPopup {
     #saveDebounced;
 
     /**
-     * @param {string | undefined} chid - Character ID
+     * @returns {Character}
+     */
+    get #character() {
+        return characters[this.#chid];
+    }
+
+    /**
+     * @param {string} chid - Character ID
      */
     constructor(chid) {
+        if (chid === undefined || !characters[chid]) {
+            throw new Error('GreetingToolsPopup requires a valid character ID');
+        }
         this.#chid = chid;
         this.#saveDebounced = /** @type {() => Promise<void>} */ (debounce(() => this.#saveAllMetadata(), debounce_timeout.relaxed));
     }
@@ -56,9 +68,9 @@ export class GreetingToolsPopup {
      */
     async show() {
         // Ensure character has alternate_greetings array
-        if (menu_type !== 'create' && this.#chid !== undefined && characters[this.#chid]) {
-            if (!Array.isArray(characters[this.#chid].data?.alternate_greetings)) {
-                characters[this.#chid].data.alternate_greetings = [];
+        if (menu_type !== 'create' && this.#chid !== undefined && this.#character) {
+            if (!Array.isArray(this.#character.data?.alternate_greetings)) {
+                this.#character.data.alternate_greetings = [];
             }
         }
 
@@ -112,8 +124,7 @@ export class GreetingToolsPopup {
         if (menu_type === 'create') {
             return create_save.alternate_greetings;
         }
-        const character = characters[this.#chid];
-        return character?.data?.alternate_greetings ?? [];
+        return this.#character.data.alternate_greetings ?? [];
     }
 
     /**
@@ -124,10 +135,7 @@ export class GreetingToolsPopup {
         if (menu_type === 'create') {
             create_save.alternate_greetings = greetings;
         } else {
-            const character = characters[this.#chid];
-            if (character?.data) {
-                character.data.alternate_greetings = greetings;
-            }
+            this.#character.data.alternate_greetings = greetings;
         }
     }
 
@@ -139,8 +147,7 @@ export class GreetingToolsPopup {
         if (menu_type === 'create') {
             return create_save.first_message ?? '';
         }
-        const character = characters[this.#chid];
-        return character?.first_mes ?? '';
+        return this.#character.first_mes ?? '';
     }
 
     /**
@@ -151,10 +158,7 @@ export class GreetingToolsPopup {
         if (menu_type === 'create') {
             create_save.first_message = content;
         } else {
-            const character = characters[this.#chid];
-            if (character) {
-                character.first_mes = content;
-            }
+            this.#character.first_mes = content;
         }
 
         // Also update the character panel textarea if it exists
@@ -232,12 +236,14 @@ export class GreetingToolsPopup {
      * @returns {Promise<void>}
      */
     async #saveAllMetadata() {
-        if (this.#chid === undefined || menu_type === 'create') return;
+        // Don't save if we are in char creation mode
+        if (menu_type === 'create') return;
 
+        /** @type {GreetingToolsData} */
         const data = {
-            greetings: /** @type {{ [id: string]: { id: string, title: string, description: string, contentHash: number } }} */ ({}),
-            indexMap: /** @type {{ [index: number]: string }} */ ({}),
-            mainGreeting: /** @type {{ id: string, title: string, description: string, contentHash: number } | null} */ (null),
+            greetings: {},
+            indexMap: {},
+            mainGreeting: null,
         };
 
         // Save main greeting metadata
@@ -332,7 +338,7 @@ export class GreetingToolsPopup {
             } else {
                 const displayIndex = index + 1;
                 if (state.title) {
-                    titleSpan.textContent = `${state.title} `;
+                    titleSpan.textContent = state.title;
                     indexSpan.innerHTML = `<span class="greeting-tools-index">(#${displayIndex})</span>`;
                 } else {
                     titleSpan.textContent = 'Alternate Greeting #';
@@ -426,7 +432,8 @@ export class GreetingToolsPopup {
             editTitleBtn.addEventListener('click', async (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                await this.#handleEditMainTitle();
+                if (!this.#mainState) return;
+                await this.#showEditTitlePopup(this.#mainState, () => this.#renderMainGreeting());
             });
         }
 
@@ -500,7 +507,9 @@ export class GreetingToolsPopup {
             editTitleBtn.addEventListener('click', async (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                await this.#handleEditTitle(state.id, list);
+                const state = this.#altStates.find(s => s.id === state.id);
+                if (!state) return;
+                await this.#showEditTitlePopup(state, () => this.#refreshAllBlocks(list));
             });
         }
 
@@ -639,25 +648,6 @@ export class GreetingToolsPopup {
             onSave();
             this.#saveDebounced();
         }
-    }
-
-    /**
-     * Handles editing a greeting title and description.
-     * @param {string} greetingId
-     * @param {HTMLElement} list
-     */
-    async #handleEditTitle(greetingId, list) {
-        const state = this.#altStates.find(s => s.id === greetingId);
-        if (!state) return;
-        await this.#showEditTitlePopup(state, () => this.#refreshAllBlocks(list));
-    }
-
-    /**
-     * Handles editing the main greeting title and description.
-     */
-    async #handleEditMainTitle() {
-        if (!this.#mainState) return;
-        await this.#showEditTitlePopup(this.#mainState, () => this.#renderMainGreeting());
     }
 
     /**
