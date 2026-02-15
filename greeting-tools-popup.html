@@ -7,15 +7,28 @@
         Alternate greetings will be displayed as swipes on the first message.
     </small>
     <hr>
-    <h4 data-i18n="Main Greeting">Main Greeting</h4>
+    <div class="greeting-tools-info-line justifyLeft">
+        <span class="greeting-tools-count"></span>
+    </div>
+    <div class="greeting-tools-toolbar justifyRight flex-container gap5px">
+        <div class="menu_button menu_button_icon greeting-tools-collapse-all" title="Collapse all greetings" data-i18n="[title]Collapse all greetings">
+            <i class="fa-solid fa-compress"></i>
+        </div>
+        <div class="menu_button menu_button_icon greeting-tools-expand-all" title="Expand all greetings" data-i18n="[title]Expand all greetings">
+            <i class="fa-solid fa-expand"></i>
+        </div>
+        <div class="menu_button menu_button_icon add_alternate_greeting greeting-tools-add" title="Add a new alternate greeting" data-i18n="[title]Add a new alternate greeting">
+            <i class="fa-solid fa-plus"></i>
+            <span data-i18n="Add">Add</span>
+        </div>
+    </div>
+    <div class="title_restorable">
+        <h4><span data-i18n="Main Greeting">Main Greeting</span></h4>
+    </div>
     <div class="greeting-tools-main-container"></div>
     <hr>
     <div class="title_restorable">
         <h4><span data-i18n="Alternate Greetings">Alternate Greetings</span></h4>
-        <div class="menu_button menu_button_icon add_alternate_greeting greeting-tools-add">
-            <i class="fa-solid fa-plus"></i>
-            <span data-i18n="Add" title="Add a new alternate greeting" data-i18n="[title]Add a new alternate greeting">Add</span>
-        </div>
     </div>
     <div class="alternate_greetings_list greeting-tools-list flexFlowColumn flex-container wide100p">
         <strong class="alternate_grettings_hint greeting-tools-hint margin-bot-10px">

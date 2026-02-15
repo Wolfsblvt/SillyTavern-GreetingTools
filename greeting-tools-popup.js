@@ -212,6 +212,32 @@ function updateHintVisibility(container) {
 }
 
 /**
+ * Updates the info line showing greeting counts.
+ */
+function updateInfoLine() {
+    if (!popupTemplate) return;
+    const countSpan = popupTemplate.querySelector('.greeting-tools-count');
+    if (countSpan instanceof HTMLElement) {
+        const altCount = greetingStates.length;
+        countSpan.textContent = t`1 main greeting and ${altCount} alternate greeting${altCount !== 1 ? 's' : ''}`;
+    }
+}
+
+/**
+ * Expands or collapses all greeting details.
+ * @param {boolean} expand - True to expand, false to collapse
+ */
+function setAllGreetingsExpanded(expand) {
+    if (!popupTemplate) return;
+    const details = popupTemplate.querySelectorAll('.greeting-tools-block details');
+    details.forEach(detail => {
+        if (detail instanceof HTMLDetailsElement) {
+            detail.open = expand;
+        }
+    });
+}
+
+/**
  * Updates the title and description display for a greeting block.
  * @param {HTMLElement} block
  * @param {GreetingState} state
@@ -240,30 +266,9 @@ function updateBlockTitle(block, state, { index = -1, isMain = false } = {}) {
 
     if (descSpan instanceof HTMLElement) {
         descSpan.textContent = state.description || '';
+        descSpan.title = state.description || '';
         descSpan.style.display = state.description ? '' : 'none';
     }
-}
-
-/**
- * Sets up the expand/collapse toggle for a textarea.
- * @param {Element | null} expandBtn
- * @param {HTMLTextAreaElement} textarea
- */
-function setupExpandButton(expandBtn, textarea) {
-    if (!expandBtn) return;
-    expandBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (textarea.rows === 12) {
-            textarea.rows = 30;
-            expandBtn.classList.remove('fa-maximize');
-            expandBtn.classList.add('fa-minimize');
-        } else {
-            textarea.rows = 12;
-            expandBtn.classList.remove('fa-minimize');
-            expandBtn.classList.add('fa-maximize');
-        }
-    });
 }
 
 /**
@@ -315,9 +320,6 @@ function createGreetingBlock(state, index, list) {
                 saveAllMetadataDebounced();
             }
         });
-
-        // Expand editor button
-        setupExpandButton(block.querySelector('.editor_maximize'), textarea);
     }
 
     // Edit title button
@@ -512,9 +514,6 @@ function renderMainGreeting() {
                 saveAllMetadataDebounced();
             }
         });
-
-        // Expand editor button
-        setupExpandButton(block.querySelector('.editor_maximize'), textarea);
     }
 
     // Edit title button
@@ -527,10 +526,10 @@ function renderMainGreeting() {
         });
     }
 
-    // Move up button - make invisible but keep space (for alignment)
+    // Move up button - disabled (greyed out) for main greeting
     const moveUpBtn = block.querySelector('.greeting-tools-move-up');
     if (moveUpBtn instanceof HTMLElement) {
-        moveUpBtn.style.visibility = 'hidden';
+        moveUpBtn.classList.add('greeting-tools-btn-disabled');
     }
 
     // Move down button - swap with first alt greeting
@@ -604,7 +603,10 @@ function handleAdd(list) {
     const block = createGreetingBlock(newState, greetingStates.length - 1, list);
     list.appendChild(block);
 
+    // Update UI states
+    updateMoveButtonStates(list);
     updateHintVisibility(list);
+    updateInfoLine();
 
     // Scroll to bottom
     list.scrollTop = list.scrollHeight;
@@ -631,7 +633,30 @@ function renderGreetingsList(list) {
         list.appendChild(block);
     }
 
+    // Update move button states for last item
+    updateMoveButtonStates(list);
     updateHintVisibility(list);
+    updateInfoLine();
+}
+
+/**
+ * Updates move button disabled states for all blocks.
+ * @param {HTMLElement} list
+ */
+function updateMoveButtonStates(list) {
+    const blocks = list.querySelectorAll('.greeting-tools-block');
+    blocks.forEach((block, index) => {
+        if (!(block instanceof HTMLElement)) return;
+        const moveDownBtn = block.querySelector('.greeting-tools-move-down');
+        if (moveDownBtn instanceof HTMLElement) {
+            // Disable move-down on last item
+            if (index === blocks.length - 1) {
+                moveDownBtn.classList.add('greeting-tools-btn-disabled');
+            } else {
+                moveDownBtn.classList.remove('greeting-tools-btn-disabled');
+            }
+        }
+    });
 }
 
 /**
@@ -682,10 +707,25 @@ export async function openGreetingToolsPopup(chid) {
     // Render alternate greetings
     renderGreetingsList(list);
 
+    // Update info line initially
+    updateInfoLine();
+
     // Add button handler
     const addBtn = popupTemplate.querySelector('.greeting-tools-add');
     if (addBtn) {
         addBtn.addEventListener('click', () => handleAdd(list));
+    }
+
+    // Expand all button handler
+    const expandAllBtn = popupTemplate.querySelector('.greeting-tools-expand-all');
+    if (expandAllBtn) {
+        expandAllBtn.addEventListener('click', () => setAllGreetingsExpanded(true));
+    }
+
+    // Collapse all button handler
+    const collapseAllBtn = popupTemplate.querySelector('.greeting-tools-collapse-all');
+    if (collapseAllBtn) {
+        collapseAllBtn.addEventListener('click', () => setAllGreetingsExpanded(false));
     }
 
     // Create and show popup

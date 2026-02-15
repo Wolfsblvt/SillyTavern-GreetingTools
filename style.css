@@ -6,23 +6,65 @@
     opacity: 0.5;
 }
 
-/* Description text below title row in summary - forces onto new line in flex container */
+/* Summary row layout: title left, actions right */
+.greeting-tools-summary {
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+/* Title wrapper: flexible width, overflow ellipsis */
+.greeting-tools-title-wrapper {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Actions group: right-aligned, no shrink */
+.greeting-tools-actions {
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+/* Description: max 5 lines, overflow hidden, full text in tooltip */
 .greeting-tools-description {
-    flex-basis: 100%;
-    order: 99;
+    display: block;
     font-size: 0.9em;
     opacity: 0.7;
     font-style: italic;
+    margin-top: 2px;
     margin-bottom: 4px;
     text-align: left;
     white-space: pre-wrap;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 5;
+    -webkit-box-orient: vertical;
+    line-clamp: 5;
 }
 
-/* Ensure parent flex container wraps for description */
-.greeting-tools-block .title_restorable {
-    flex-wrap: wrap;
+/* Info line styling */
+.greeting-tools-info-line {
+    font-size: 0.9em;
+    opacity: 0.8;
+    margin-bottom: 4px;
+}
+
+/* Toolbar styling */
+.greeting-tools-toolbar {
+    margin-bottom: 8px;
+}
+
+/* Disabled button state */
+.greeting-tools-btn-disabled {
+    filter: brightness(75%) grayscale(1);
+    opacity: 0.5;
+    pointer-events: none;
 }
 
 .alternate_greetings_list.greeting-tools-list {
-    overflow-y: auto; /* No automatic scrollbar, looks weird */
+    overflow-y: auto;
 }
