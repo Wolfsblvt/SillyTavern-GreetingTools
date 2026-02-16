@@ -199,24 +199,14 @@ function searchGreetings(searchTerm) {
  * Switches to a specific greeting by swipe index using core swipe function.
  * @param {number} swipeIndex
  */
-async function switchToGreeting(swipeIndex) {
+export async function switchToGreeting(swipeIndex) {
     if (!chat || chat.length === 0) return;
 
     const firstMessage = chat[0];
 
     // Ensure swipes array exists
     if (!Array.isArray(firstMessage.swipes)) {
-        firstMessage.swipes = [firstMessage.mes];
-        firstMessage.swipe_info = [{}];
-        firstMessage.swipe_id = 0;
-
-        // Add alternate greetings as swipes
-        const character = characters[this_chid];
-        const altGreetings = character?.data?.alternate_greetings ?? [];
-        for (const altGreeting of altGreetings) {
-            firstMessage.swipes.push(altGreeting);
-            firstMessage.swipe_info.push({});
-        }
+        return;
     }
 
     // Validate swipe index

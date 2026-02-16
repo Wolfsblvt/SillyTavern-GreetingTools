@@ -848,5 +848,9 @@ export class GreetingToolsPopup {
         if (menu_type !== 'create') {
             await createOrEditCharacter();
         }
+
+        if (this.#highlightSwipeIndex !== null) {
+
+        }
     }
 }
