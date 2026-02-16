@@ -119,12 +119,12 @@ export class GreetingToolsPopup {
             },
         });
 
-        await this.#popup.show();
-
         // Handle highlighting if requested
         if (this.#highlightSwipeIndex !== undefined) {
             this.#highlightGreeting(this.#highlightSwipeIndex, list);
         }
+
+        await this.#popup.show();
     }
 
     /**
@@ -133,43 +133,48 @@ export class GreetingToolsPopup {
      * @param {HTMLElement} list - The greetings list element
      */
     #highlightGreeting(swipeIndex, list) {
-        let targetBlock;
-        let targetTextarea;
+        // Small delay to ensure DOM is fully rendered
+        setTimeout(() => {
+            let targetBlock;
+            let targetTextarea;
 
-        if (swipeIndex === 0) {
-            // Main greeting
-            targetBlock = this.#template?.querySelector('.greeting-tools-main-block');
-            targetTextarea = targetBlock?.querySelector('textarea');
-        } else {
-            // Alternate greeting (swipe index 1 = array index 0)
-            const altIndex = swipeIndex - 1;
-            const blocks = list.querySelectorAll('details');
-            if (altIndex >= 0 && altIndex < blocks.length) {
-                targetBlock = blocks[altIndex];
+            if (swipeIndex === 0) {
+                // Main greeting
+                targetBlock = this.#template?.querySelector('.greeting-tools-main-block');
                 targetTextarea = targetBlock?.querySelector('textarea');
+            } else {
+                // Alternate greeting (swipe index 1 = array index 0)
+                // Exclude main block from the query
+                const altIndex = swipeIndex - 1;
+                const blocks = list.querySelectorAll('.greeting-tools-block:not(.greeting-tools-main-block) details');
+                if (altIndex >= 0 && altIndex < blocks.length) {
+                    targetBlock = blocks[altIndex];
+                    targetTextarea = targetBlock?.querySelector('textarea');
+                }
             }
-        }
 
-        if (targetBlock instanceof HTMLElement) {
-            // Expand if it's a details element
-            if (targetBlock instanceof HTMLDetailsElement) {
-                targetBlock.open = true;
+            if (targetBlock instanceof HTMLElement) {
+                // Expand if it's a details element
+                if (targetBlock instanceof HTMLDetailsElement) {
+                    targetBlock.open = true;
+                }
+
+                // Scroll into view
+                targetBlock.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+                // Flash highlight - target the parent block for better visual
+                const blockToHighlight = /** @type {HTMLElement} */ (targetBlock.closest('.greeting-tools-block') ?? targetBlock);
+                flashHighlight($(blockToHighlight));
+
+                // Focus textarea after a small delay for smooth UX
+                if (targetTextarea instanceof HTMLTextAreaElement) {
+                    setTimeout(() => {
+                        targetTextarea.focus();
+                        targetTextarea.setSelectionRange(0, 0);
+                    }, 50);
+                }
             }
-
-            // Scroll into view
-            targetBlock.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-            // Flash highlight
-            flashHighlight($(targetBlock), 2000);
-
-            // Focus textarea after a small delay for smooth UX
-            if (targetTextarea instanceof HTMLTextAreaElement) {
-                setTimeout(() => {
-                    targetTextarea.focus();
-                    targetTextarea.setSelectionRange(0, 0);
-                }, 300);
-            }
-        }
+        }, 100);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -613,8 +618,8 @@ export class GreetingToolsPopup {
      * @param {HTMLElement} list
      */
     #renderGreetingsList(list) {
-        // Clear existing blocks (but keep the hint)
-        const blocks = list.querySelectorAll('.greeting-tools-block');
+        // Clear existing alternate blocks (but keep the main greeting and hint)
+        const blocks = list.querySelectorAll('.greeting-tools-block:not(.greeting-tools-main-block)');
         blocks.forEach(block => block.remove());
 
         // Render all greetings

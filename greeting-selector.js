@@ -1,5 +1,6 @@
 import { Fuse } from '../../../../lib.js';
 import { characters, chat, eventSource, event_types, swipe, this_chid } from '../../../../script.js';
+import { SWIPE_DIRECTION } from '../../../constants.js';
 import { renderExtensionTemplateAsync } from '../../../extensions.js';
 import { t } from '../../../i18n.js';
 import { escapeHtml, getStringHash } from '../../../utils.js';
@@ -214,8 +215,12 @@ async function switchToGreeting(swipeIndex) {
         return;
     }
 
+    // Determine direction based on current vs target swipe ID
+    const currentSwipeId = firstMessage.swipe_id ?? 0;
+    const direction = (currentSwipeId <= swipeIndex) ? SWIPE_DIRECTION.RIGHT : SWIPE_DIRECTION.LEFT;
+
     // Use core swipe function with forceSwipeId for smooth animation
-    await swipe(null, null, {
+    await swipe(null, direction, {
         forceMesId: 0,
         forceSwipeId: swipeIndex,
         message: firstMessage,
@@ -335,8 +340,9 @@ function updateSelectorUI(selector, { rebuildDropdown = false } = {}) {
                 // @ts-ignore
                 $dropdown.on('select2:select', async (e) => {
                     const selectedIndex = Number(e.params.data.id);
+                    const actualCurrentIndex = getCurrentSwipeId();
                     closeGreetingDropdown(selector);
-                    if (selectedIndex !== currentIndex) {
+                    if (selectedIndex !== actualCurrentIndex) {
                         await switchToGreeting(selectedIndex);
                     }
                 });
