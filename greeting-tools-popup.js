@@ -475,10 +475,18 @@ export class GreetingToolsPopup {
         // Update title display
         this.#updateBlockTitle(block, this.#mainState, { isMain: true });
 
-        // Set textarea content
+        // Set textarea content and unique ID for expanded editor
         const textarea = block.querySelector('.greeting-tools-textarea');
         if (textarea instanceof HTMLTextAreaElement) {
+            const textareaId = `greeting-textarea-${this.#mainState.id}`;
+            textarea.id = textareaId;
             textarea.value = this.#mainState.content;
+
+            // Link maximize button to textarea
+            const maximizeBtn = block.querySelector('.editor_maximize');
+            if (maximizeBtn) {
+                maximizeBtn.setAttribute('data-for', textareaId);
+            }
 
             // Update content on change
             textarea.addEventListener('input', () => {
@@ -549,10 +557,18 @@ export class GreetingToolsPopup {
         // Set title
         this.#updateBlockTitle(block, state, { index });
 
-        // Set textarea content
+        // Set textarea content and unique ID for expanded editor
         const textarea = block.querySelector('.greeting-tools-textarea');
         if (textarea instanceof HTMLTextAreaElement) {
+            const textareaId = `greeting-textarea-${state.id}`;
+            textarea.id = textareaId;
             textarea.value = state.content;
+
+            // Link maximize button to textarea
+            const maximizeBtn = block.querySelector('.editor_maximize');
+            if (maximizeBtn) {
+                maximizeBtn.setAttribute('data-for', textareaId);
+            }
 
             // Update content on change
             textarea.addEventListener('input', () => {

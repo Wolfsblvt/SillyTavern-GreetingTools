@@ -1,9 +1,9 @@
-import { Fuse } from '../../../../lib.js';
 import { characters, chat, eventSource, event_types, swipe, this_chid } from '../../../../script.js';
 import { SWIPE_DIRECTION } from '../../../constants.js';
 import { renderExtensionTemplateAsync } from '../../../extensions.js';
 import { t } from '../../../i18n.js';
 import { escapeHtml, getStringHash } from '../../../utils.js';
+import { performFuzzySearch } from '../../../power-user.js';
 import { EXTENSION_NAME } from './index.js';
 import { getGreetingToolsData, openGreetingToolsPopup } from './greeting-tools.js';
 
@@ -18,9 +18,6 @@ import { getGreetingToolsData, openGreetingToolsPopup } from './greeting-tools.j
 
 /** @type {HTMLElement | null} */
 let selectorTemplate = null;
-
-/** @type {Fuse<GreetingOption> | null} */
-let greetingFuse = null;
 
 /** @type {GreetingOption[]} */
 let cachedOptions = [];
@@ -164,36 +161,6 @@ function createOptionHtml(option) {
     `;
 }
 
-/**
- * Initializes fuzzy search for greeting options.
- * @param {GreetingOption[]} options
- */
-function initFuzzySearch(options) {
-    cachedOptions = options;
-    greetingFuse = new Fuse(options, {
-        keys: [
-            { name: 'title', weight: 10 },
-            { name: 'description', weight: 5 },
-            { name: 'content', weight: 2 },
-        ],
-        includeScore: true,
-        ignoreLocation: true,
-        threshold: 0.3,
-    });
-}
-
-/**
- * Performs fuzzy search on greeting options.
- * @param {string} searchTerm
- * @returns {GreetingOption[]}
- */
-function searchGreetings(searchTerm) {
-    if (!searchTerm || !greetingFuse) {
-        return cachedOptions;
-    }
-    const results = greetingFuse.search(searchTerm);
-    return results.map(r => r.item);
-}
 
 /**
  * Switches to a specific greeting by swipe index using core swipe function.
@@ -228,26 +195,19 @@ export async function switchToGreeting(swipeIndex) {
 }
 
 /**
- * Closes the greeting selector dropdown and returns to readonly display.
+ * Toggles the greeting selector dropdown open or closed.
  * @param {HTMLElement} selector
+ * @param {boolean} open - True to open, false to close
  */
-function closeGreetingDropdown(selector) {
-    selector.classList.remove('greeting-selector-selecting');
+function toggleGreetingDropdown(selector, open) {
+    selector.classList.toggle('greeting-selector-selecting', open);
     const dropdown = selector.querySelector('.greeting-selector-dropdown');
     if (dropdown && $(dropdown).data('select2')) {
-        $(dropdown).select2('close');
-    }
-}
-
-/**
- * Opens the greeting selector dropdown for selection.
- * @param {HTMLElement} selector
- */
-function openGreetingDropdown(selector) {
-    selector.classList.add('greeting-selector-selecting');
-    const dropdown = selector.querySelector('.greeting-selector-dropdown');
-    if (dropdown && $(dropdown).data('select2')) {
-        $(dropdown).select2('open');
+        if (open) {
+            $(dropdown).select2('open');
+        } else {
+            $(dropdown).select2('close');
+        }
     }
 }
 
@@ -263,8 +223,8 @@ function updateSelectorUI(selector, { rebuildDropdown = false } = {}) {
     const isChangeable = isGreetingChangeable();
     const currentOption = findOptionBySwipeIndex(options, currentIndex);
 
-    // Initialize fuzzy search with current options
-    initFuzzySearch(options);
+    // Cache options for fuzzy search
+    cachedOptions = options;
 
     // Update title display
     const titleEl = selector.querySelector('.greeting-selector-title-display');
@@ -283,7 +243,7 @@ function updateSelectorUI(selector, { rebuildDropdown = false } = {}) {
 
     // Close dropdown when switching to readonly
     if (!isChangeable) {
-        closeGreetingDropdown(selector);
+        toggleGreetingDropdown(selector, false);
     }
 
     // Update swipe info (only show when changeable)
@@ -316,12 +276,17 @@ function updateSelectorUI(selector, { rebuildDropdown = false } = {}) {
                     width: '100%',
                     dropdownAutoWidth: true,
                     matcher: (params, data) => {
-                        // Custom matcher using fuzzy search
                         if (!params.term || params.term.trim() === '') {
                             return data;
                         }
-                        const results = searchGreetings(params.term);
-                        const match = results.find(r => data && 'id' in data && r.swipeIndex === Number(data.id));
+                        const searchWeights = [
+                            { name: 'title', weight: 10 },
+                            { name: 'description', weight: 5 },
+                            { name: 'content', weight: 2 },
+                        ];
+                        // Fuzzy search using performFuzzySearch
+                        const results = performFuzzySearch('greetings', cachedOptions, searchWeights, params.term);
+                        const match = results.find(r => data && 'id' in data && r.item.swipeIndex === Number(data.id));
                         return match ? data : null;
                     },
                     templateResult: (state) => {
@@ -341,7 +306,7 @@ function updateSelectorUI(selector, { rebuildDropdown = false } = {}) {
                 $dropdown.on('select2:select', async (e) => {
                     const selectedIndex = Number(e.params.data.id);
                     const actualCurrentIndex = getCurrentSwipeId();
-                    closeGreetingDropdown(selector);
+                    toggleGreetingDropdown(selector, false);
                     if (selectedIndex !== actualCurrentIndex) {
                         await switchToGreeting(selectedIndex);
                     }
@@ -349,7 +314,7 @@ function updateSelectorUI(selector, { rebuildDropdown = false } = {}) {
 
                 // Close dropdown on blur/close
                 $dropdown.on('select2:close', () => {
-                    closeGreetingDropdown(selector);
+                    toggleGreetingDropdown(selector, false);
                 });
             } else {
                 // Update selected value
@@ -434,7 +399,7 @@ function setupSelectorEventHandlers(selector) {
         selectBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            openGreetingDropdown(selector);
+            toggleGreetingDropdown(selector, true);
         });
     }
 
