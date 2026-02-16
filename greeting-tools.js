@@ -4,6 +4,8 @@ import { t } from '../../../i18n.js';
 import { EXTENSION_KEY } from './index.js';
 import { GreetingToolsPopup } from './greeting-tools-popup.js';
 
+/** @typedef {import('./greeting-tools-popup.js').OpenPopupOptions} OpenPopupOptions */
+
 /**
  * @typedef {Object} GreetingMetadata
  * @property {string} [id] - Unique greeting ID
@@ -79,10 +81,11 @@ export async function saveGreetingToolsData(data, { chid = null } = {}) {
 
 /**
  * Opens the greeting tools popup for a character.
- * @param {string | undefined} chid - Character ID
+ * @param {string} chid - Character ID
+ * @param {OpenPopupOptions} [options] - Options object
  */
-export async function openGreetingToolsPopup(chid) {
-    const popup = new GreetingToolsPopup(chid);
+export async function openGreetingToolsPopup(chid, options = {}) {
+    const popup = new GreetingToolsPopup(chid, options);
     await popup.show();
 }
 

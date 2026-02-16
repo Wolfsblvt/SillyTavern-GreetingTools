@@ -2,7 +2,7 @@ import { characters, menu_type, create_save, createOrEditCharacter } from '../..
 import { renderExtensionTemplateAsync } from '../../../extensions.js';
 import { Popup, POPUP_TYPE } from '../../../popup.js';
 import { t } from '../../../i18n.js';
-import { debounce, getStringHash } from '../../../utils.js';
+import { debounce, flashHighlight, getStringHash } from '../../../utils.js';
 import { debounce_timeout } from '../../../constants.js';
 import { EXTENSION_NAME } from './index.js';
 import { generateGreetingId, getGreetingToolsData, saveGreetingToolsData } from './greeting-tools.js';
@@ -16,6 +16,11 @@ import { generateGreetingId, getGreetingToolsData, saveGreetingToolsData } from 
  * @property {string} title - Custom title for display
  * @property {string} description - Optional description/summary
  * @property {number} contentHash - Hash of content for change detection
+ */
+
+/**
+ * @typedef {Object} OpenPopupOptions
+ * @property {number} [highlightSwipeIndex] - Swipe index to highlight (0 = main, 1+ = alternate)
  */
 
 /**
@@ -44,6 +49,9 @@ export class GreetingToolsPopup {
     /** @type {() => Promise<void>} */
     #saveDebounced;
 
+    /** @type {number | undefined} */
+    #highlightSwipeIndex;
+
     /**
      * @returns {Character}
      */
@@ -53,12 +61,14 @@ export class GreetingToolsPopup {
 
     /**
      * @param {string} chid - Character ID
+     * @param {OpenPopupOptions} [options={}] - Options object
      */
-    constructor(chid) {
+    constructor(chid, options = {}) {
         if (chid === undefined || !characters[chid]) {
             throw new Error('GreetingToolsPopup requires a valid character ID');
         }
         this.#chid = chid;
+        this.#highlightSwipeIndex = options.highlightSwipeIndex;
         this.#saveDebounced = /** @type {() => Promise<void>} */ (debounce(() => this.#saveAllMetadata(), debounce_timeout.relaxed));
     }
 
@@ -110,6 +120,56 @@ export class GreetingToolsPopup {
         });
 
         await this.#popup.show();
+
+        // Handle highlighting if requested
+        if (this.#highlightSwipeIndex !== undefined) {
+            this.#highlightGreeting(this.#highlightSwipeIndex, list);
+        }
+    }
+
+    /**
+     * Highlights a specific greeting block and focuses its textarea.
+     * @param {number} swipeIndex - Swipe index (0 = main, 1+ = alternate)
+     * @param {HTMLElement} list - The greetings list element
+     */
+    #highlightGreeting(swipeIndex, list) {
+        let targetBlock;
+        let targetTextarea;
+
+        if (swipeIndex === 0) {
+            // Main greeting
+            targetBlock = this.#template?.querySelector('.greeting-tools-main-block');
+            targetTextarea = targetBlock?.querySelector('textarea');
+        } else {
+            // Alternate greeting (swipe index 1 = array index 0)
+            const altIndex = swipeIndex - 1;
+            const blocks = list.querySelectorAll('details');
+            if (altIndex >= 0 && altIndex < blocks.length) {
+                targetBlock = blocks[altIndex];
+                targetTextarea = targetBlock?.querySelector('textarea');
+            }
+        }
+
+        if (targetBlock instanceof HTMLElement) {
+            // Expand if it's a details element
+            if (targetBlock instanceof HTMLDetailsElement) {
+                targetBlock.open = true;
+            }
+
+            // Scroll into view
+            targetBlock.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            // Flash highlight
+            flashHighlight($(targetBlock), 2000);
+
+            // Focus textarea after a small delay for smooth UX
+            if (targetTextarea instanceof HTMLTextAreaElement) {
+                setTimeout(() => {
+                    targetTextarea.focus();
+                    targetTextarea.setSelectionRange(0, 0);
+                }, 300);
+            }
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -507,9 +567,9 @@ export class GreetingToolsPopup {
             editTitleBtn.addEventListener('click', async (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                const state = this.#altStates.find(s => s.id === state.id);
-                if (!state) return;
-                await this.#showEditTitlePopup(state, () => this.#refreshAllBlocks(list));
+                const clickedState = this.#altStates.find(s => s.id === state.id);
+                if (!clickedState) return;
+                await this.#showEditTitlePopup(clickedState, () => this.#refreshAllBlocks(list));
             });
         }
 
