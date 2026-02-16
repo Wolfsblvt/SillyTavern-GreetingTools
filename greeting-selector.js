@@ -26,23 +26,33 @@ let greetingFuse = null;
 let cachedOptions = [];
 
 /**
- * Checks if the current chat is in a swipeable first-message state.
+ * Checks if the first message is a character greeting that we can display info for.
  * @returns {boolean}
  */
-function isFirstMessageSwipeable() {
+function isFirstMessageGreeting() {
     if (!chat || chat.length === 0) return false;
-
-    // Only swipeable if there's exactly one message
-    if (chat.length !== 1) return false;
 
     const firstMessage = chat[0];
 
     // Must be a character message (not user)
     if (firstMessage.is_user) return false;
 
-    // Must have swipes available
+    return true;
+}
+
+/**
+ * Checks if the greeting can be changed (only when chat has exactly one message).
+ * @returns {boolean}
+ */
+function isGreetingChangeable() {
+    if (!isFirstMessageGreeting()) return false;
+
+    // Only changeable if there's exactly one message
+    if (chat.length !== 1) return false;
+
+    // Must have swipes available or alternate greetings
+    const firstMessage = chat[0];
     if (!Array.isArray(firstMessage.swipes) || firstMessage.swipes.length <= 1) {
-        // Check if there are alternate greetings available
         const character = characters[this_chid];
         if (!character) return false;
 
@@ -260,8 +270,8 @@ function openGreetingDropdown(selector) {
 function updateSelectorUI(selector, { rebuildDropdown = false } = {}) {
     const options = getGreetingOptions();
     const currentIndex = getCurrentSwipeId();
+    const isChangeable = isGreetingChangeable();
     const currentOption = findOptionBySwipeIndex(options, currentIndex);
-    const isSwipeable = isFirstMessageSwipeable();
 
     // Initialize fuzzy search with current options
     initFuzzySearch(options);
@@ -278,22 +288,22 @@ function updateSelectorUI(selector, { rebuildDropdown = false } = {}) {
         descEl.textContent = currentOption?.description || '';
     }
 
-    // Toggle readonly mode
-    selector.classList.toggle('greeting-selector-readonly', !isSwipeable);
+    // Toggle readonly mode (hide buttons when not changeable)
+    selector.classList.toggle('greeting-selector-readonly', !isChangeable);
 
     // Close dropdown when switching to readonly
-    if (!isSwipeable) {
+    if (!isChangeable) {
         closeGreetingDropdown(selector);
     }
 
-    // Update swipe info
+    // Update swipe info (only show when changeable)
     const swipeInfoEl = selector.querySelector('.greeting-selector-swipe-info');
     if (swipeInfoEl) {
-        swipeInfoEl.textContent = isSwipeable ? `${currentIndex + 1} / ${options.length}` : '';
+        swipeInfoEl.textContent = isChangeable ? `${currentIndex + 1} / ${options.length}` : '';
     }
 
-    // Setup dropdown if swipeable
-    if (isSwipeable) {
+    // Setup dropdown if changeable
+    if (isChangeable) {
         const dropdown = selector.querySelector('.greeting-selector-dropdown');
         if (dropdown instanceof HTMLSelectElement) {
             const $dropdown = $(dropdown);
@@ -363,8 +373,8 @@ function updateSelectorUI(selector, { rebuildDropdown = false } = {}) {
  * Injects the greeting selector into the first message.
  */
 async function injectGreetingSelector() {
-    // Only inject if we have a character selected and there's a chat
-    if (this_chid === undefined || !chat || chat.length === 0) {
+    // Only inject if we have a character selected and there's a greeting
+    if (this_chid === undefined || !isFirstMessageGreeting()) {
         removeGreetingSelector();
         return;
     }
@@ -471,9 +481,22 @@ function removeGreetingSelector() {
  * Handles chat change event.
  */
 async function onChatChanged() {
-    // Small delay to ensure DOM is ready
-    // TODO: Likely not needed, as "message rendered" event should be sufficient
-    // setTimeout(() => injectGreetingSelector(), 10);
+    // Small delay to ensure DOM is ready after chat switch
+    setTimeout(() => injectGreetingSelector(), 50);
+}
+
+/**
+ * Handles any message rendered event - used to update button visibility.
+ * @param {number} messageId
+ */
+function onAnyMessageRendered(messageId) {
+    // When any message beyond the first is rendered, update UI to hide buttons
+    if (messageId > 0) {
+        const selector = /** @type {HTMLElement|null} */ (document.querySelector('.greeting-selector'));
+        if (selector) {
+            updateSelectorUI(selector);
+        }
+    }
 }
 
 /**
@@ -505,6 +528,7 @@ export function initGreetingSelector() {
     eventSource.on(event_types.CHAT_CHANGED, onChatChanged);
     eventSource.on(event_types.MESSAGE_SWIPED, onMessageSwiped);
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, onCharacterMessageRendered);
+    eventSource.on(event_types.USER_MESSAGE_RENDERED, onAnyMessageRendered);
 
     // Initial injection if chat is already loaded
     if (chat && chat.length > 0) {
