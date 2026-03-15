@@ -4,9 +4,9 @@ import { Popup, POPUP_TYPE, POPUP_RESULT } from '../../../popup.js';
 import { t } from '../../../i18n.js';
 import { debounce, flashHighlight, getStringHash } from '../../../utils.js';
 import { debounce_timeout } from '../../../constants.js';
-import { showLoader, hideLoader } from '../../../loader.js';
 import { EXTENSION_NAME } from './index.js';
 import { generateGreetingId, getGreetingToolsData, saveGreetingToolsData, updateButtonAppearance } from './greeting-tools.js';
+import { showGenerationLoader } from '../../../generation-loader.js';
 
 /** @typedef {import('./greeting-tools.js').GreetingToolsData} GreetingToolsData */
 
@@ -421,11 +421,11 @@ export class GreetingToolsPopup {
     }
 
     /**
-     * Re-renders all block indices and titles.
+     * Re-renders all alternate greeting block indices and titles.
      * @param {HTMLElement} list
      */
-    #refreshAllBlocks(list) {
-        const blocks = list.querySelectorAll('.greeting-tools-block');
+    #refreshAllAltBlocks(list) {
+        const blocks = list.querySelectorAll('.greeting-tools-block:not(.greeting-tools-main-block)');
         blocks.forEach((block, index) => {
             if (!(block instanceof HTMLElement)) return;
             const state = this.#altStates[index];
@@ -511,6 +511,17 @@ export class GreetingToolsPopup {
             });
         }
 
+        // Auto-fill button (shortcut for auto-generating title/description)
+        const autoFillBtn = block.querySelector('.greeting-tools-auto-fill');
+        if (autoFillBtn) {
+            autoFillBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!this.#mainState) return;
+                await this.#handleAutoFill(this.#mainState, () => this.#renderMainGreeting());
+            });
+        }
+
         // Move up button - disabled (greyed out) for main greeting
         const moveUpBtn = block.querySelector('.greeting-tools-move-up');
         if (moveUpBtn instanceof HTMLElement) {
@@ -591,7 +602,7 @@ export class GreetingToolsPopup {
                 e.stopPropagation();
                 const clickedState = this.#altStates.find(s => s.id === state.id);
                 if (!clickedState) return;
-                await this.#showEditTitlePopup(clickedState, () => this.#refreshAllBlocks(list));
+                await this.#showEditTitlePopup(clickedState, () => this.#refreshAllAltBlocks(list));
             });
         }
 
@@ -603,7 +614,7 @@ export class GreetingToolsPopup {
                 e.stopPropagation();
                 const clickedState = this.#altStates.find(s => s.id === state.id);
                 if (!clickedState) return;
-                await this.#handleAutoFill(clickedState, () => this.#refreshAllBlocks(list));
+                await this.#handleAutoFill(clickedState, () => this.#refreshAllAltBlocks(list));
             });
         }
 
@@ -789,18 +800,16 @@ You **MUST** respond with exactly this format, no other text:
         // Main prompt is just the greeting content
         const prompt = state.content;
 
+        const loader = showGenerationLoader({
+            message: t`Generating title and description...`,
+        });
+
         try {
-            showLoader();
-            toastr.info(t`Generating title and description...`, '', { timeOut: 0, extendedTimeOut: 0 });
-
-
             const response = await generateRaw({
                 prompt,
                 systemPrompt,
                 instructOverride: true,
             });
-
-            toastr.clear();
 
             // Log full response for debugging
             console.info('[GreetingTools] LLM response', { text: response });
@@ -837,12 +846,11 @@ You **MUST** respond with exactly this format, no other text:
 
             return { title, description };
         } catch (error) {
-            toastr.clear();
             console.error('[GreetingTools] Generation error:', error);
             toastr.error(t`Generation failed: ${error.message}`);
             return null;
         } finally {
-            await hideLoader();
+            await loader.hide();
         }
     }
 
@@ -871,21 +879,24 @@ You **MUST** respond with exactly this format, no other text:
         const items = [];
 
         if (replaceTitle) {
-            items.push(`<div><strong>${t`Title`}:</strong></div>`);
-            items.push(`<div style="opacity:0.6;text-decoration:line-through">${this.#truncateText(currentTitle)}</div>`);
-            items.push(`<div style="color:var(--SmartThemeQuoteColor)">${this.#truncateText(newTitle)}</div>`);
+            items.push('<div class="replace-preview-section">');
+            items.push(`<div class="replace-preview-label">${t`Title`}:</div>`);
+            items.push(`<div class="replace-preview-old">${this.#truncateText(currentTitle)}</div>`);
+            items.push(`<div class="replace-preview-new">${this.#truncateText(newTitle)}</div>`);
+            items.push('</div>');
         }
 
         if (replaceDesc) {
-            if (replaceTitle) items.push('<hr style="margin:8px 0">');
-            items.push(`<div><strong>${t`Description`}:</strong></div>`);
-            items.push(`<div style="opacity:0.6;text-decoration:line-through">${this.#truncateText(currentDesc)}</div>`);
-            items.push(`<div style="color:var(--SmartThemeQuoteColor)">${this.#truncateText(newDesc)}</div>`);
+            items.push('<div class="replace-preview-section">');
+            items.push(`<div class="replace-preview-label">${t`Description`}:</div>`);
+            items.push(`<div class="replace-preview-old">${this.#truncateText(currentDesc, 640)}</div>`);
+            items.push(`<div class="replace-preview-new">${this.#truncateText(newDesc, 640)}</div>`);
+            items.push('</div>');
         }
 
         const confirmed = await Popup.show.confirm(
             t`Replace existing values?`,
-            items.join(''),
+            `<div class="replace-preview-container">${items.join('')}</div>`,
         ) === POPUP_RESULT.AFFIRMATIVE;
         return confirmed;
     }

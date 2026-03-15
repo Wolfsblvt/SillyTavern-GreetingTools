@@ -6,6 +6,11 @@
     opacity: 0.5;
 }
 
+/* Gap between greeting title and index */
+.greeting-tools-block .greeting_index {
+    margin-left: 5px;
+}
+
 /* Summary row layout: title left, actions right */
 .greeting-tools-summary {
     display: flex;
@@ -206,4 +211,33 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
     line-clamp: 3;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Replace Preview Popup (for auto-fill confirmation)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.replace-preview-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.replace-preview-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.replace-preview-label {
+    font-weight: bold;
+}
+
+.replace-preview-old {
+    opacity: 0.6;
+    text-decoration: line-through;
+}
+
+.replace-preview-new {
+    color: var(--SmartThemeQuoteColor);
 }
