@@ -4,6 +4,7 @@ import { Popup, POPUP_TYPE, POPUP_RESULT } from '../../../popup.js';
 import { t } from '../../../i18n.js';
 import { debounce, flashHighlight, getStringHash } from '../../../utils.js';
 import { debounce_timeout } from '../../../constants.js';
+import { showLoader, hideLoader } from '../../../loader.js';
 import { EXTENSION_NAME } from './index.js';
 import { generateGreetingId, getGreetingToolsData, saveGreetingToolsData, updateButtonAppearance } from './greeting-tools.js';
 
@@ -594,6 +595,18 @@ export class GreetingToolsPopup {
             });
         }
 
+        // Auto-fill button (shortcut for auto-generating title/description)
+        const autoFillBtn = block.querySelector('.greeting-tools-auto-fill');
+        if (autoFillBtn) {
+            autoFillBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const clickedState = this.#altStates.find(s => s.id === state.id);
+                if (!clickedState) return;
+                await this.#handleAutoFill(clickedState, () => this.#refreshAllBlocks(list));
+            });
+        }
+
         // Move up button
         const moveUpBtn = block.querySelector('.greeting-tools-move-up');
         if (moveUpBtn instanceof HTMLElement) {
@@ -701,7 +714,7 @@ Your task is to generate a short, memorable **title** and a brief **description*
 
 ## Instructions
 - The **title** should be 2-7 words, catchy and descriptive of the greeting's theme or mood, making it unique and recognizable between the other greetings
-- The **description** should be 1-5 sentences summarizing what makes this greeting unique
+- The **description** should be 2-6 sentences summarizing what makes this greeting unique
 - Be creative but accurate to the greeting's content
 - Output **ONLY** the title and description in the exact format shown below
 
@@ -727,7 +740,7 @@ Your task is to generate a short, memorable **title** and a brief **description*
 {{/if}}
 
 ## Required Output Format
-You MUST respond with exactly this format, no other text:
+You **MUST** respond with exactly this format, no other text:
 
 \`\`\`title
 [Your generated title here]
@@ -777,7 +790,9 @@ You MUST respond with exactly this format, no other text:
         const prompt = state.content;
 
         try {
+            showLoader();
             toastr.info(t`Generating title and description...`, '', { timeOut: 0, extendedTimeOut: 0 });
+
 
             const response = await generateRaw({
                 prompt,
@@ -788,7 +803,7 @@ You MUST respond with exactly this format, no other text:
             toastr.clear();
 
             // Log full response for debugging
-            console.log('[GreetingTools] LLM response:', response);
+            console.info('[GreetingTools] LLM response', { text: response });
 
             if (!response || typeof response !== 'string') {
                 toastr.error(t`No response from LLM`);
@@ -826,6 +841,8 @@ You MUST respond with exactly this format, no other text:
             console.error('[GreetingTools] Generation error:', error);
             toastr.error(t`Generation failed: ${error.message}`);
             return null;
+        } finally {
+            await hideLoader();
         }
     }
 
@@ -874,6 +891,116 @@ You MUST respond with exactly this format, no other text:
     }
 
     /**
+     * Performs auto-fill generation for a greeting state.
+     * Can be called from both the edit popup button and the shortcut button.
+     * @param {GreetingEditorState} state - The greeting state to auto-fill
+     * @param {object} [options={}] - Options for the auto-fill
+     * @param {HTMLTextAreaElement|null} [options.titleInput=null] - Title input element (if in popup)
+     * @param {HTMLTextAreaElement|null} [options.descInput=null] - Description input element (if in popup)
+     * @param {() => void} [options.onSave=null] - Callback after saving (for direct mode)
+     * @returns {Promise<boolean>} Whether values were updated
+     */
+    async #performAutoFill(state, { titleInput = null, descInput = null, onSave = null } = {}) {
+        // Get current values
+        const currentTitle = titleInput?.value?.trim() ?? state.title ?? '';
+        const currentDesc = (descInput?.value ?? state.description ?? '').trim();
+
+        // Pre-generation confirmation if both fields are filled
+        if (currentTitle && currentDesc) {
+            const confirmGenerate = await Popup.show.confirm(
+                t`Generate new values?`,
+                t`Both title and description already have values. Generate new content to replace them?`,
+            ) === POPUP_RESULT.AFFIRMATIVE;
+            if (!confirmGenerate) return false;
+        }
+
+        // Generate
+        const generated = await this.#generateTitleAndDescription(state);
+        if (!generated) return false;
+
+        // Helper to apply values
+        const applyValues = (/** @type {string} */ title, /** @type {string} */ desc) => {
+            if (titleInput) {
+                titleInput.value = title;
+            } else {
+                state.title = title;
+            }
+            if (descInput) {
+                descInput.value = desc;
+            } else {
+                state.description = desc;
+            }
+            // If direct mode (no inputs), save immediately
+            if (!titleInput && !descInput && onSave) {
+                onSave();
+                this.#saveDebounced();
+            }
+        };
+
+        // Determine what to fill based on what's empty
+        if (!currentTitle && !currentDesc) {
+            // Both empty: fill both
+            applyValues(generated.title, generated.description);
+            toastr.success(t`Generated title and description`);
+            return true;
+        } else if (!currentTitle) {
+            // Only title empty: fill title, ask about description
+            applyValues(generated.title, currentDesc);
+
+            // Ask if user wants to replace description too
+            const replaceDesc = await this.#showReplacePreview(
+                '', currentDesc, '', generated.description, false, true,
+            );
+            if (replaceDesc) {
+                applyValues(generated.title, generated.description);
+                toastr.success(t`Generated title and replaced description`);
+            } else {
+                toastr.success(t`Generated title`);
+            }
+            return true;
+        } else if (!currentDesc) {
+            // Only description empty: fill description, ask about title
+            applyValues(currentTitle, generated.description);
+
+            // Ask if user wants to replace title too
+            const replaceTitle = await this.#showReplacePreview(
+                currentTitle, '', generated.title, '', true, false,
+            );
+            if (replaceTitle) {
+                applyValues(generated.title, generated.description);
+                toastr.success(t`Replaced title and generated description`);
+            } else {
+                toastr.success(t`Generated description`);
+            }
+            return true;
+        } else {
+            // Both filled: already confirmed, show preview and replace
+            const confirmReplace = await this.#showReplacePreview(
+                currentTitle, currentDesc, generated.title, generated.description, true, true,
+            );
+            if (confirmReplace) {
+                applyValues(generated.title, generated.description);
+                toastr.success(t`Replaced title and description`);
+                return true;
+            }
+            return false;
+        }
+    }
+
+    /**
+     * Directly auto-fills a greeting state without opening the edit popup.
+     * Used by the shortcut button in the greeting block.
+     * @param {GreetingEditorState} state - The greeting state to auto-fill
+     * @param {() => void} onSave - Callback to refresh UI after save
+     */
+    async #handleAutoFill(state, onSave) {
+        const updated = await this.#performAutoFill(state, { onSave });
+        if (updated) {
+            onSave();
+        }
+    }
+
+    /**
      * Shows the edit title/description popup for any greeting state.
      * @param {GreetingEditorState} state - The greeting state to edit
      * @param {() => void} onSave - Callback to refresh UI after save
@@ -889,71 +1016,12 @@ You MUST respond with exactly this format, no other text:
         let popup;
 
         const handleGenerate = async () => {
-            // Get current values from popup inputs
             const titleInput = popup.mainInput;
             const descInput = popup.body?.querySelector('#greeting-description-input');
-
-            const currentTitle = titleInput?.value?.trim() ?? '';
-            const currentDesc = (descInput instanceof HTMLTextAreaElement ? descInput.value : '').trim();
-
-            // Pre-generation confirmation if both fields are filled
-            if (currentTitle && currentDesc) {
-                const confirmGenerate = await Popup.show.confirm(
-                    t`Generate new values?`,
-                    t`Both title and description already have values. Generate new content to replace them?`,
-                );
-                if (!confirmGenerate) return;
-            }
-
-            // Generate
-            const generated = await this.#generateTitleAndDescription(state);
-            if (!generated) return;
-
-            // Determine what to fill based on what's empty
-            if (!currentTitle && !currentDesc) {
-                // Both empty: fill both
-                if (titleInput) titleInput.value = generated.title;
-                if (descInput instanceof HTMLTextAreaElement) descInput.value = generated.description;
-                toastr.success(t`Generated title and description`);
-            } else if (!currentTitle) {
-                // Only title empty: fill title, ask about description
-                if (titleInput) titleInput.value = generated.title;
-
-                // Ask if user wants to replace description too
-                const replaceDesc = await this.#showReplacePreview(
-                    '', currentDesc, '', generated.description, false, true,
-                );
-                if (replaceDesc && descInput instanceof HTMLTextAreaElement) {
-                    descInput.value = generated.description;
-                    toastr.success(t`Generated title and replaced description`);
-                } else {
-                    toastr.success(t`Generated title`);
-                }
-            } else if (!currentDesc) {
-                // Only description empty: fill description, ask about title
-                if (descInput instanceof HTMLTextAreaElement) descInput.value = generated.description;
-
-                // Ask if user wants to replace title too
-                const replaceTitle = await this.#showReplacePreview(
-                    currentTitle, '', generated.title, '', true, false,
-                );
-                if (replaceTitle && titleInput) {
-                    titleInput.value = generated.title;
-                    toastr.success(t`Replaced title and generated description`);
-                } else {
-                    toastr.success(t`Generated description`);
-                }
-            } else {
-                // Both filled: already confirmed, show preview and replace
-                const confirmReplace = await this.#showReplacePreview(
-                    currentTitle, currentDesc, generated.title, generated.description, true, true,
-                );
-                if (confirmReplace) {
-                    if (titleInput) titleInput.value = generated.title;
-                    if (descInput instanceof HTMLTextAreaElement) descInput.value = generated.description;
-                    toastr.success(t`Replaced title and description`);
-                }
-            }
+            await this.#performAutoFill(state, {
+                titleInput: titleInput ?? null,
+                descInput: descInput instanceof HTMLTextAreaElement ? descInput : null,
+            });
         };
 
         popup = new Popup(content, POPUP_TYPE.INPUT, state.title, {
@@ -962,7 +1030,7 @@ You MUST respond with exactly this format, no other text:
                     id: 'greeting-description-input',
                     label: t`Description` + ' / ' + t`Summary`,
                     type: 'textarea',
-                    rows: 3,
+                    rows: 7,
                     defaultState: state.description,
                     tooltip: t`Optional description or summary`,
                 },
@@ -1049,15 +1117,21 @@ You MUST respond with exactly this format, no other text:
      * @param {HTMLElement} list
      */
     async #handleDelete(greetingId, list) {
+        const index = this.#altStates.findIndex(s => s.id === greetingId);
+        if (index === -1) return;
+
+        const state = this.#altStates[index];
+        const greetingNumber = index + 1;
+        const greetingName = state.title
+            ? `${t`greeting`} "${state.title}" (#${greetingNumber})`
+            : `${t`Alternate Greeting`} #${greetingNumber}`;
+
         const confirm = await Popup.show.confirm(
             t`Delete Greeting`,
-            t`Are you sure you want to delete this alternate greeting?`,
+            t`Are you sure you want to delete ${greetingName}?`,
         );
 
         if (!confirm) return;
-
-        const index = this.#altStates.findIndex(s => s.id === greetingId);
-        if (index === -1) return;
 
         // Remove from state
         this.#altStates.splice(index, 1);
