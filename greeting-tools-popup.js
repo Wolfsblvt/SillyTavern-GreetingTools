@@ -846,8 +846,14 @@ You **MUST** respond with exactly this format, no other text:
 
             return { title, description };
         } catch (error) {
-            console.error('[GreetingTools] Generation error:', error);
-            toastr.error(t`Generation failed: ${error.message}`);
+            // Don't show error toast for intentional user aborts
+            const isAborted = error?.name === 'AbortError' || error?.message?.includes('Cancelled');
+            if (isAborted) {
+                console.log('[GreetingTools] Generation was cancelled by user');
+            } else {
+                console.error('[GreetingTools] Generation error:', error);
+                toastr.error(t`Generation failed: ${error.message}`);
+            }
             return null;
         } finally {
             await loader.hide();
@@ -895,7 +901,7 @@ You **MUST** respond with exactly this format, no other text:
         }
 
         const confirmed = await Popup.show.confirm(
-            t`Replace existing values?`,
+            t`Replace Existing Greeting Information?`,
             `<div class="replace-preview-container">${items.join('')}</div>`,
         ) === POPUP_RESULT.AFFIRMATIVE;
         return confirmed;
