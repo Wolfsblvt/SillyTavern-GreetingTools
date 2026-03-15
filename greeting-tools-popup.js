@@ -702,6 +702,12 @@ export class GreetingToolsPopup {
         if (collapseAllBtn) {
             collapseAllBtn.addEventListener('click', () => this.#setAllGreetingsExpanded(false));
         }
+
+        // Generate new greeting button handler
+        const generateBtn = this.#template.querySelector('.greeting-tools-generate');
+        if (generateBtn) {
+            generateBtn.addEventListener('click', () => this.#handleGenerateNewGreeting(list));
+        }
     }
 
     /**
@@ -760,6 +766,50 @@ You **MUST** respond with exactly this format, no other text:
 \`\`\`description
 [Your generated description here]
 \`\`\``;
+
+    /** System prompt template for generating new greeting content */
+    static #GENERATE_GREETING_SYSTEM_PROMPT = `You are writing a new opening greeting message for a roleplay character named '{{char}}'.
+
+## Your Task
+Write a compelling, immersive **first message** that establishes an interesting scenario or situation. This message should:
+- Be written from {{char}}'s perspective (first person or third person narrative as appropriate)
+- Set up an engaging scene, situation, or encounter
+- Reflect the character's personality and speaking style
+- Be detailed enough to give {{user}} something to respond to
+- Include scene-setting, actions, dialogue, or inner thoughts as appropriate
+
+{{#if charDescription}}
+## Character Description
+{{charDescription}}
+
+{{/if}}
+{{#if charPersonality}}
+## Character Personality
+{{charPersonality}}
+
+{{/if}}
+{{#if scenario}}
+## Base Scenario
+{{scenario}}
+
+{{/if}}
+{{#if existingTitles}}
+## Existing Greeting Themes (try to create something different)
+The following greetings already exist. Try to create a unique scenario that differs from these:
+{{existingTitles}}
+
+{{/if}}
+{{#if customPrompt}}
+## Special Instructions
+The user has requested the following specific theme or scenario for this greeting:
+**{{customPrompt}}**
+
+Make sure to incorporate this into the greeting while staying true to the character.
+
+{{/if}}
+## Output Format
+Write ONLY the greeting message itself. Do not include titles, labels, explanations, or meta-commentary.
+Just write the actual greeting text that {{char}} would say/do to start a conversation or scene with {{user}}.`;
 
     /**
      * Collects existing greeting titles (excluding the current state).
@@ -1201,6 +1251,178 @@ You **MUST** respond with exactly this format, no other text:
 
         // Update button count
         updateButtonAppearance(this.#chid);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Generate New Greeting
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /** Default placeholder text for the generate greeting popup */
+    static #GENERATE_GREETING_PLACEHOLDER = t`Describe the scenario or theme for this greeting... (leave empty for a general new greeting)`;
+
+    /**
+     * Collects all existing greeting titles for context.
+     * @returns {string} Formatted list of existing titles, or empty string
+     */
+    #getAllExistingTitles() {
+        const titles = [];
+        if (this.#mainState?.title) {
+            titles.push(this.#mainState.title);
+        }
+        for (const alt of this.#altStates) {
+            if (alt.title) {
+                titles.push(alt.title);
+            }
+        }
+        return titles.length > 0 ? titles.map(t => `- ${t}`).join('\n') : '';
+    }
+
+    /**
+     * Shows the generate greeting popup and handles the generation flow.
+     * @param {HTMLElement} list - The greeting list container
+     */
+    async #handleGenerateNewGreeting(list) {
+        // Show popup with text input for custom prompt
+        const customPrompt = await this.#showGenerateGreetingPromptPopup();
+
+        // User cancelled
+        if (customPrompt === null) return;
+
+        // Generate the greeting content
+        const content = await this.#generateGreetingContent(customPrompt);
+        if (!content) return;
+
+        // Create new state with generated content
+        const newState = {
+            id: generateGreetingId(),
+            content,
+            title: '',
+            description: '',
+            contentHash: getStringHash(content),
+        };
+
+        // Add to states and sync
+        this.#altStates.push(newState);
+        this.#syncGreetingsToCharacter();
+        await this.#saveDebounced();
+
+        // Append the new block
+        const block = this.#createGreetingBlock(newState, this.#altStates.length - 1, list);
+        list.appendChild(block);
+
+        // Update UI states
+        this.#updateMoveButtonStates(list);
+        this.#updateHintVisibility(list);
+        this.#updateInfoLine();
+
+        // Scroll to bottom to show new greeting
+        list.scrollTop = list.scrollHeight;
+
+        // Update button count
+        updateButtonAppearance(this.#chid);
+
+        // Now auto-generate title and description (non-blocking for the UI, but we await it)
+        const generated = await this.#generateTitleAndDescription(newState);
+        if (generated) {
+            newState.title = generated.title;
+            newState.description = generated.description;
+
+            // Update the block's display
+            this.#updateBlockTitle(block, newState, { index: this.#altStates.length - 1 });
+
+            // Save the updated metadata
+            await this.#saveDebounced();
+
+            toastr.success(t`Generated new greeting with title and description`);
+        } else {
+            // Content was generated but title/description failed - still a partial success
+            toastr.info(t`Greeting content generated. You can manually add title and description.`);
+        }
+
+        // Focus the textarea
+        const textarea = block.querySelector('.greeting-tools-textarea');
+        if (textarea instanceof HTMLTextAreaElement) {
+            textarea.focus();
+        }
+    }
+    /**
+     * Shows a popup for the user to enter a custom prompt for greeting generation.
+     * @returns {Promise<string | null>} The custom prompt text, empty string for default, or null if cancelled
+     */
+    async #showGenerateGreetingPromptPopup() {
+        const popup = new Popup(t`Describe what kind of greeting scenario you want to generate. Leave empty for a general new greeting based on the character.`, POPUP_TYPE.INPUT, '', {
+            large: false,
+            rows: 7,
+            placeholder: GreetingToolsPopup.#GENERATE_GREETING_PLACEHOLDER,
+            okButton: t`Generate`,
+            cancelButton: t`Cancel`,
+        });
+
+        const result = await popup.show();
+        return typeof result === 'string' ? result.trim() : null;
+    }
+
+    /**
+     * Generates greeting content using LLM.
+     * @param {string} customPrompt - Optional custom prompt from user
+     * @returns {Promise<string | null>} Generated greeting content or null on failure
+     */
+    async #generateGreetingContent(customPrompt) {
+        // Build dynamic macros
+        const existingTitles = this.#getAllExistingTitles();
+        const dynamicMacros = {
+            existingTitles,
+            customPrompt: customPrompt || '',
+        };
+
+        // Substitute macros in system prompt
+        const systemPrompt = substituteParams(GreetingToolsPopup.#GENERATE_GREETING_SYSTEM_PROMPT, undefined, undefined, dynamicMacros);
+
+        // The prompt to the LLM is minimal - system prompt has all context
+        const prompt = customPrompt
+            ? t`Generate a greeting for {{char}} with this theme:\n${customPrompt}`
+            : t`Generate a new greeting for {{char}} that differs from existing greetings.`;
+
+        const loader = showGenerationLoader({
+            message: t`Generating new greeting...`,
+        });
+
+        try {
+            const response = await generateRaw({
+                prompt,
+                systemPrompt,
+                instructOverride: true,
+            });
+
+            console.info('[GreetingTools] Generated greeting content', { text: response });
+
+            if (!response || typeof response !== 'string') {
+                toastr.error(t`No response from LLM`);
+                return null;
+            }
+
+            // Clean up the response - remove any leading/trailing whitespace
+            const content = response.trim();
+
+            if (!content) {
+                toastr.error(t`Generated content is empty`);
+                return null;
+            }
+
+            return content;
+        } catch (error) {
+            // Don't show error toast for intentional user aborts
+            const isAborted = error?.name === 'AbortError' || error?.message?.includes('Cancelled');
+            if (isAborted) {
+                console.log('[GreetingTools] Greeting generation was cancelled by user');
+            } else {
+                console.error('[GreetingTools] Greeting generation error:', error);
+                toastr.error(t`Generation failed: ${error.message}`);
+            }
+            return null;
+        } finally {
+            await loader.hide();
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────

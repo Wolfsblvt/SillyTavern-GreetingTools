@@ -241,3 +241,23 @@
 .replace-preview-new {
     color: var(--SmartThemeQuoteColor);
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Generate Greeting Prompt Popup
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.generate-greeting-prompt-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.generate-greeting-prompt-container p {
+    margin: 0;
+    opacity: 0.9;
+}
+
+.generate-greeting-prompt-container textarea {
+    min-height: 80px;
+    resize: vertical;
+}
