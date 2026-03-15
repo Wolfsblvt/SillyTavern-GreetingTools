@@ -832,9 +832,11 @@ Just write the actual greeting text that {{char}} would say/do to start a conver
     /**
      * Generates title and description using LLM.
      * @param {GreetingEditorState} state - The greeting state
+     * @param {object} [options={}] - Generation options
+     * @param {boolean} [options.showLoader=true] - Whether to show the blocking loader (false for chained generation)
      * @returns {Promise<{title: string, description: string} | null>}
      */
-    async #generateTitleAndDescription(state) {
+    async #generateTitleAndDescription(state, { showLoader = true } = {}) {
         if (!state.content || state.content.trim().length === 0) {
             toastr.warning(t`Cannot generate without greeting content`);
             return null;
@@ -850,9 +852,9 @@ Just write the actual greeting text that {{char}} would say/do to start a conver
         // Main prompt is just the greeting content
         const prompt = state.content;
 
-        const loader = showGenerationLoader({
-            message: t`Generating title and description...`,
-        });
+        const loader = showLoader
+            ? showGenerationLoader({ message: t`Generating title and description...` })
+            : null;
 
         try {
             const response = await generateRaw({
@@ -906,7 +908,7 @@ Just write the actual greeting text that {{char}} would say/do to start a conver
             }
             return null;
         } finally {
-            await loader.hide();
+            if (loader) await loader.hide();
         }
     }
 
@@ -1321,8 +1323,12 @@ Just write the actual greeting text that {{char}} would say/do to start a conver
         // Update button count
         updateButtonAppearance(this.#chid);
 
-        // Now auto-generate title and description (non-blocking for the UI, but we await it)
+        // Show success toast for content generation (will auto-dismiss)
+        toastr.success(t`Greeting content generated successfully`);
+
+        // Generate title and description with blocking loader
         const generated = await this.#generateTitleAndDescription(newState);
+
         if (generated) {
             newState.title = generated.title;
             newState.description = generated.description;
@@ -1333,10 +1339,10 @@ Just write the actual greeting text that {{char}} would say/do to start a conver
             // Save the updated metadata
             await this.#saveDebounced();
 
-            toastr.success(t`Generated new greeting with title and description`);
+            toastr.success(t`Title and description added`);
         } else {
             // Content was generated but title/description failed - still a partial success
-            toastr.info(t`Greeting content generated. You can manually add title and description.`);
+            toastr.warning(t`Could not generate title/description. You can add them manually.`);
         }
 
         // Focus the textarea
