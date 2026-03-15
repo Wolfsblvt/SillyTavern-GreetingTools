@@ -1,11 +1,11 @@
-import { characters, menu_type, create_save, createOrEditCharacter } from '../../../../script.js';
+import { characters, menu_type, create_save, createOrEditCharacter, generateRaw, substituteParams } from '../../../../script.js';
 import { renderExtensionTemplateAsync } from '../../../extensions.js';
-import { Popup, POPUP_TYPE } from '../../../popup.js';
+import { Popup, POPUP_TYPE, POPUP_RESULT } from '../../../popup.js';
 import { t } from '../../../i18n.js';
 import { debounce, flashHighlight, getStringHash } from '../../../utils.js';
 import { debounce_timeout } from '../../../constants.js';
 import { EXTENSION_NAME } from './index.js';
-import { generateGreetingId, getGreetingToolsData, saveGreetingToolsData } from './greeting-tools.js';
+import { generateGreetingId, getGreetingToolsData, saveGreetingToolsData, updateButtonAppearance } from './greeting-tools.js';
 
 /** @typedef {import('./greeting-tools.js').GreetingToolsData} GreetingToolsData */
 
@@ -694,6 +694,185 @@ export class GreetingToolsPopup {
         });
     }
 
+    /** System prompt template for greeting title/description generation */
+    static #GENERATE_SYSTEM_PROMPT = `You are helping organize greeting messages for a character named '{{char}}'.
+
+Your task is to generate a short, memorable **title** and a brief **description** for the following greeting message.
+
+## Instructions
+- The **title** should be 2-7 words, catchy and descriptive of the greeting's theme or mood, making it unique and recognizable between the other greetings
+- The **description** should be 1-5 sentences summarizing what makes this greeting unique
+- Be creative but accurate to the greeting's content
+- Output **ONLY** the title and description in the exact format shown below
+
+{{#if charDescription}}
+## Character Description (for context)
+{{charDescription}}
+
+{{/if}}
+{{#if charPersonality}}
+## Character Personality
+{{charPersonality}}
+
+{{/if}}
+{{#if scenario}}
+## Scenario
+{{scenario}}
+
+{{/if}}
+{{#if existingTitles}}
+## Existing Greeting Titles (avoid identical or too similar names)
+{{existingTitles}}
+
+{{/if}}
+
+## Required Output Format
+You MUST respond with exactly this format, no other text:
+
+\`\`\`title
+[Your generated title here]
+\`\`\`
+
+\`\`\`description
+[Your generated description here]
+\`\`\``;
+
+    /**
+     * Collects existing greeting titles (excluding the current state).
+     * @param {GreetingEditorState} state - The current greeting state
+     * @returns {string} Formatted list of existing titles, or empty string
+     */
+    #getExistingTitles(state) {
+        const titles = [];
+        if (this.#mainState && this.#mainState.id !== state.id && this.#mainState.title) {
+            titles.push(this.#mainState.title);
+        }
+        for (const alt of this.#altStates) {
+            if (alt.id !== state.id && alt.title) {
+                titles.push(alt.title);
+            }
+        }
+        return titles.length > 0 ? titles.map(t => `- ${t}`).join('\n') : '';
+    }
+
+    /**
+     * Generates title and description using LLM.
+     * @param {GreetingEditorState} state - The greeting state
+     * @returns {Promise<{title: string, description: string} | null>}
+     */
+    async #generateTitleAndDescription(state) {
+        if (!state.content || state.content.trim().length === 0) {
+            toastr.warning(t`Cannot generate without greeting content`);
+            return null;
+        }
+
+        // Build dynamic macros for this generation
+        const existingTitles = this.#getExistingTitles(state);
+        const dynamicMacros = { existingTitles };
+
+        // Substitute macros in system prompt
+        const systemPrompt = substituteParams(GreetingToolsPopup.#GENERATE_SYSTEM_PROMPT, undefined, undefined, dynamicMacros);
+
+        // Main prompt is just the greeting content
+        const prompt = state.content;
+
+        try {
+            toastr.info(t`Generating title and description...`, '', { timeOut: 0, extendedTimeOut: 0 });
+
+            const response = await generateRaw({
+                prompt,
+                systemPrompt,
+                instructOverride: true,
+            });
+
+            toastr.clear();
+
+            // Log full response for debugging
+            console.log('[GreetingTools] LLM response:', response);
+
+            if (!response || typeof response !== 'string') {
+                toastr.error(t`No response from LLM`);
+                return null;
+            }
+
+            // Parse code blocks from response
+            const titleMatch = response.match(/```title\s*\n?([\s\S]*?)```/i);
+            const descMatch = response.match(/```description\s*\n?([\s\S]*?)```/i);
+
+            let title = titleMatch?.[1]?.trim() ?? '';
+            let description = descMatch?.[1]?.trim() ?? '';
+
+            // Fallback: if no code blocks, try to extract from plain text
+            if (!title && !description) {
+                const lines = response.trim().split('\n').filter(l => l.trim());
+                if (lines.length >= 1) {
+                    // First non-empty line as title, rest as description
+                    title = lines[0].replace(/^(title:|#|\*)+\s*/i, '').trim();
+                    if (lines.length >= 2) {
+                        description = lines.slice(1).join(' ').replace(/^(description:|#|\*)+\s*/i, '').trim();
+                    }
+                    console.log('[GreetingTools] Used fallback parsing for response');
+                }
+            }
+
+            if (!title) {
+                toastr.error(t`Could not parse title from LLM response`);
+                return null;
+            }
+
+            return { title, description };
+        } catch (error) {
+            toastr.clear();
+            console.error('[GreetingTools] Generation error:', error);
+            toastr.error(t`Generation failed: ${error.message}`);
+            return null;
+        }
+    }
+
+    /**
+     * Truncates text with ellipsis if exceeding max length.
+     * @param {string} text - The text to truncate
+     * @param {number} maxLength - Maximum length
+     * @returns {string} Truncated text
+     */
+    #truncateText(text, maxLength = 80) {
+        if (!text || text.length <= maxLength) return text;
+        return text.substring(0, maxLength - 3) + '...';
+    }
+
+    /**
+     * Shows a before/after comparison popup for replacing values.
+     * @param {string} currentTitle - Current title value
+     * @param {string} currentDesc - Current description value
+     * @param {string} newTitle - Generated title value
+     * @param {string} newDesc - Generated description value
+     * @param {boolean} replaceTitle - Whether to replace title
+     * @param {boolean} replaceDesc - Whether to replace description
+     * @returns {Promise<boolean>} Whether user confirmed replacement
+     */
+    async #showReplacePreview(currentTitle, currentDesc, newTitle, newDesc, replaceTitle, replaceDesc) {
+        const items = [];
+
+        if (replaceTitle) {
+            items.push(`<div><strong>${t`Title`}:</strong></div>`);
+            items.push(`<div style="opacity:0.6;text-decoration:line-through">${this.#truncateText(currentTitle)}</div>`);
+            items.push(`<div style="color:var(--SmartThemeQuoteColor)">${this.#truncateText(newTitle)}</div>`);
+        }
+
+        if (replaceDesc) {
+            if (replaceTitle) items.push('<hr style="margin:8px 0">');
+            items.push(`<div><strong>${t`Description`}:</strong></div>`);
+            items.push(`<div style="opacity:0.6;text-decoration:line-through">${this.#truncateText(currentDesc)}</div>`);
+            items.push(`<div style="color:var(--SmartThemeQuoteColor)">${this.#truncateText(newDesc)}</div>`);
+        }
+
+        const confirmed = await Popup.show.confirm(
+            t`Replace existing values?`,
+            items.join(''),
+        ) === POPUP_RESULT.AFFIRMATIVE;
+        return confirmed;
+    }
+
     /**
      * Shows the edit title/description popup for any greeting state.
      * @param {GreetingEditorState} state - The greeting state to edit
@@ -706,8 +885,78 @@ export class GreetingToolsPopup {
             <p data-i18n="Give this greeting a memorable title and optional description.">Give this greeting a memorable title and optional description.</p>
         `;
 
-        const popup = new Popup(content, POPUP_TYPE.INPUT, state.title, {
-            rows: 1,
+        /** @type {Popup} */
+        let popup;
+
+        const handleGenerate = async () => {
+            // Get current values from popup inputs
+            const titleInput = popup.mainInput;
+            const descInput = popup.body?.querySelector('#greeting-description-input');
+
+            const currentTitle = titleInput?.value?.trim() ?? '';
+            const currentDesc = (descInput instanceof HTMLTextAreaElement ? descInput.value : '').trim();
+
+            // Pre-generation confirmation if both fields are filled
+            if (currentTitle && currentDesc) {
+                const confirmGenerate = await Popup.show.confirm(
+                    t`Generate new values?`,
+                    t`Both title and description already have values. Generate new content to replace them?`,
+                );
+                if (!confirmGenerate) return;
+            }
+
+            // Generate
+            const generated = await this.#generateTitleAndDescription(state);
+            if (!generated) return;
+
+            // Determine what to fill based on what's empty
+            if (!currentTitle && !currentDesc) {
+                // Both empty: fill both
+                if (titleInput) titleInput.value = generated.title;
+                if (descInput instanceof HTMLTextAreaElement) descInput.value = generated.description;
+                toastr.success(t`Generated title and description`);
+            } else if (!currentTitle) {
+                // Only title empty: fill title, ask about description
+                if (titleInput) titleInput.value = generated.title;
+
+                // Ask if user wants to replace description too
+                const replaceDesc = await this.#showReplacePreview(
+                    '', currentDesc, '', generated.description, false, true,
+                );
+                if (replaceDesc && descInput instanceof HTMLTextAreaElement) {
+                    descInput.value = generated.description;
+                    toastr.success(t`Generated title and replaced description`);
+                } else {
+                    toastr.success(t`Generated title`);
+                }
+            } else if (!currentDesc) {
+                // Only description empty: fill description, ask about title
+                if (descInput instanceof HTMLTextAreaElement) descInput.value = generated.description;
+
+                // Ask if user wants to replace title too
+                const replaceTitle = await this.#showReplacePreview(
+                    currentTitle, '', generated.title, '', true, false,
+                );
+                if (replaceTitle && titleInput) {
+                    titleInput.value = generated.title;
+                    toastr.success(t`Replaced title and generated description`);
+                } else {
+                    toastr.success(t`Generated description`);
+                }
+            } else {
+                // Both filled: already confirmed, show preview and replace
+                const confirmReplace = await this.#showReplacePreview(
+                    currentTitle, currentDesc, generated.title, generated.description, true, true,
+                );
+                if (confirmReplace) {
+                    if (titleInput) titleInput.value = generated.title;
+                    if (descInput instanceof HTMLTextAreaElement) descInput.value = generated.description;
+                    toastr.success(t`Replaced title and description`);
+                }
+            }
+        };
+
+        popup = new Popup(content, POPUP_TYPE.INPUT, state.title, {
             customInputs: [
                 {
                     id: 'greeting-description-input',
@@ -716,6 +965,14 @@ export class GreetingToolsPopup {
                     rows: 3,
                     defaultState: state.description,
                     tooltip: t`Optional description or summary`,
+                },
+            ],
+            customButtons: [
+                {
+                    text: t`Auto-Fill`,
+                    tooltip: t`Automatically generate a title and description based on the greeting content`,
+                    icon: 'fa-wand-magic-sparkles',
+                    action: handleGenerate,
                 },
             ],
         });
@@ -811,6 +1068,9 @@ export class GreetingToolsPopup {
 
         // Re-render the list
         this.#renderGreetingsList(list);
+
+        // Update button count
+        updateButtonAppearance(this.#chid);
     }
 
     /**
@@ -847,6 +1107,9 @@ export class GreetingToolsPopup {
         if (textarea instanceof HTMLTextAreaElement) {
             textarea.focus();
         }
+
+        // Update button count
+        updateButtonAppearance(this.#chid);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -865,8 +1128,7 @@ export class GreetingToolsPopup {
             await createOrEditCharacter();
         }
 
-        if (this.#highlightSwipeIndex !== null) {
-
-        }
+        // Refresh button count
+        updateButtonAppearance(this.#chid);
     }
 }

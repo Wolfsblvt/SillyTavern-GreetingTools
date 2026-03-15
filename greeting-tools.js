@@ -1,4 +1,4 @@
-import { characters, menu_type, this_chid } from '../../../../script.js';
+import { characters, eventSource, event_types, menu_type, this_chid } from '../../../../script.js';
 import { writeExtensionField } from '../../../extensions.js';
 import { t } from '../../../i18n.js';
 import { EXTENSION_KEY } from './index.js';
@@ -94,16 +94,40 @@ export async function openGreetingToolsPopup(chid, options = {}) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Updates the button text and tooltip to reflect the extension's functionality.
+ * Gets the total greeting count for a character (main + alternates).
+ * @param {string} [chid] - Character ID (defaults to current character)
+ * @returns {number} Total number of greetings
  */
-function updateButtonAppearance() {
+function getGreetingCount(chid) {
+    const id = chid ?? this_chid;
+    const character = characters[id];
+    if (!character) return 0;
+
+    const altGreetings = character.data?.alternate_greetings ?? [];
+    // Main greeting counts as 1, plus all alternate greetings
+    return 1 + altGreetings.length;
+}
+
+/**
+ * Updates the button text and tooltip to reflect the extension's functionality.
+ * @param {string} [chid] - Character ID to get count for
+ */
+export function updateButtonAppearance(chid) {
     const buttons = document.querySelectorAll('.open_alternate_greetings');
+    const count = getGreetingCount(chid);
+
     buttons.forEach(button => {
-        button.setAttribute('title', t`Manage greetings - edit titles, descriptions, and reorder`);
+        // Update tooltip with count info
+        const tooltip = count > 1
+            ? t`Manage ${count} greetings - edit titles, descriptions, and reorder`
+            : t`Manage greetings - edit titles, descriptions, and reorder`;
+        button.setAttribute('title', tooltip);
 
         const textSpan = button.querySelector('span');
         if (textSpan instanceof HTMLElement) {
-            textSpan.textContent = t`Greeting Tools`;
+            // Show count in parentheses only if more than 1 greeting
+            const displayText = count > 1 ? t`Greeting Tools` + ` (${count})` : t`Greeting Tools`;
+            textSpan.textContent = displayText;
             textSpan.dataset.i18n = 'Greeting Tools';
         }
     });
@@ -114,6 +138,9 @@ function updateButtonAppearance() {
  */
 export function setupButtonIntercept() {
     updateButtonAppearance();
+
+    // Update button when character changes
+    eventSource.on(event_types.CHAT_CHANGED, () => updateButtonAppearance());
 
     document.addEventListener('click', (e) => {
         const target = e.target;

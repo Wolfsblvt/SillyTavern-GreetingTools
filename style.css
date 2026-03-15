@@ -23,10 +23,16 @@
     white-space: nowrap;
 }
 
+/* Maximize button: separate from actions grid */
+.greeting-tools-summary > .editor_maximize {
+    flex-shrink: 0;
+    margin-left: 8px;
+    margin-right: 4px;
+}
+
 /* Actions group: right-aligned, no shrink */
 .greeting-tools-actions {
     flex-shrink: 0;
-    margin-left: auto;
 }
 
 /* Description: max 5 lines, overflow hidden, full text in tooltip */
