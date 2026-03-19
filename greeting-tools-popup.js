@@ -6,7 +6,7 @@ import { debounce, flashHighlight, getStringHash } from '../../../utils.js';
 import { debounce_timeout } from '../../../constants.js';
 import { EXTENSION_NAME } from './index.js';
 import { generateGreetingId, getGreetingToolsData, saveGreetingToolsData, updateButtonAppearance } from './greeting-tools.js';
-import { showGenerationLoader } from '../../../generation-loader.js';
+import { showActionLoader } from '../../../action-loader.js';
 
 /** @typedef {import('./greeting-tools.js').GreetingToolsData} GreetingToolsData */
 
@@ -853,7 +853,7 @@ Just write the actual greeting text that {{char}} would say/do to start a conver
         const prompt = state.content;
 
         const loader = showLoader
-            ? showGenerationLoader({ message: t`Generating title and description...` })
+            ? showActionLoader({ message: t`Generating title and description...` })
             : null;
 
         try {
@@ -1002,7 +1002,7 @@ Just write the actual greeting text that {{char}} would say/do to start a conver
             // If direct mode (no inputs), save immediately
             if (!titleInput && !descInput && onSave) {
                 onSave();
-                this.#saveDebounced();
+                this.#saveAllMetadata();
             }
         };
 
@@ -1323,11 +1323,18 @@ Just write the actual greeting text that {{char}} would say/do to start a conver
         // Update button count
         updateButtonAppearance(this.#chid);
 
-        // Show success toast for content generation (will auto-dismiss)
-        toastr.success(t`Greeting content generated successfully`);
+        // Show persistent success toast for content generation (stays visible during title/desc generation)
+        const contentSuccessToast = toastr.success(t`Greeting content generated successfully`, '', {
+            timeOut: 0,
+            extendedTimeOut: 0,
+            tapToDismiss: false,
+        });
 
-        // Generate title and description with blocking loader
+        // Generate title and description with blocking loader (shows its own toast below the success toast)
         const generated = await this.#generateTitleAndDescription(newState);
+
+        // Clear the content success toast now that we're done
+        toastr.clear(contentSuccessToast, { force: true });
 
         if (generated) {
             newState.title = generated.title;
@@ -1336,13 +1343,13 @@ Just write the actual greeting text that {{char}} would say/do to start a conver
             // Update the block's display
             this.#updateBlockTitle(block, newState, { index: this.#altStates.length - 1 });
 
-            // Save the updated metadata
-            await this.#saveDebounced();
+            // Save the updated metadata immediately (not debounced - we need guaranteed save)
+            await this.#saveAllMetadata();
 
-            toastr.success(t`Title and description added`);
+            toastr.success(t`New greeting created with title and description`);
         } else {
             // Content was generated but title/description failed - still a partial success
-            toastr.warning(t`Could not generate title/description. You can add them manually.`);
+            toastr.warning(t`Greeting created. Could not generate title/description - add them manually.`);
         }
 
         // Focus the textarea
@@ -1389,7 +1396,7 @@ Just write the actual greeting text that {{char}} would say/do to start a conver
             ? t`Generate a greeting for {{char}} with this theme:\n${customPrompt}`
             : t`Generate a new greeting for {{char}} that differs from existing greetings.`;
 
-        const loader = showGenerationLoader({
+        const loader = showActionLoader({
             message: t`Generating new greeting...`,
         });
 
