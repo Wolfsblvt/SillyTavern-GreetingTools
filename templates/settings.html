@@ -1,0 +1,59 @@
+<div id="extension_settings_greeting_tools" class="extension_container">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b data-i18n="Greeting Tools">Greeting Tools</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+            <div class="flex-container flexFlowColumn">
+                <label class="checkbox_label" for="greeting_tools_collapse_by_default">
+                    <input type="checkbox" id="greeting_tools_collapse_by_default" />
+                    <span data-i18n="Collapse greetings by default inside Greeting Tools">Collapse greetings by default inside Greeting Tools</span>
+                </label>
+                <label class="checkbox_label" for="greeting_tools_replace_names" title="When generating new greetings, automatically replace character and user names with &lcub;&lcub;char&rcub;&rcub; and &lcub;&lcub;user&rcub;&rcub; macros">
+                    <input type="checkbox" id="greeting_tools_replace_names" />
+                    <div class="flex-container flexFlowColumn alignItemsFlexStart">
+                        <span data-i18n="Replace names with macros in generated greetings">Replace names with macros in generated greetings</span>
+                        <small class="notes" data-i18n="Replaces character/user names with &lcub;&lcub;char&rcub;&rcub; and &lcub;&lcub;user&rcub;&rcub;">Replaces character/user names with &lcub;&lcub;char&rcub;&rcub; and &lcub;&lcub;user&rcub;&rcub;</small>
+                    </div>
+                </label>
+            </div>
+            <div class="inline-drawer marginTop5">
+                <div class="inline-drawer-toggle inline-drawer-header">
+                    <b data-i18n="Greeting Tool Prompt Templates">Greeting Tool Prompt Templates</b>
+                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                </div>
+                <div class="inline-drawer-content">
+                    <div class="flex-container flexFlowColumn">
+                        <div class="title_restorable">
+                            <div class="flex-container alignitemscenter">
+                                <h4 data-i18n="Title/Description Generation">Title/Description Generation</h4>
+                                <i class="editor_maximize fa-solid fa-maximize right_menu_button" title="Expand" data-i18n="[title]Expand" data-for="greeting_tools_generate_prompt"></i>
+                            </div>
+                            <div id="greeting_tools_reset_generate_prompt" class="menu_button menu_button_icon" title="Restore default" data-i18n="[title]Restore default">
+                                <i class="fa-solid fa-rotate-left"></i>
+                            </div>
+                        </div>
+                        <small class="notes" data-i18n="System prompt for auto-generating titles and descriptions for greetings.">System prompt for auto-generating titles and descriptions for greetings.</small>
+                        <div class="flex-container alignItemsCenter">
+                            <textarea id="greeting_tools_generate_prompt" class="text_pole textarea_compact" rows="4" placeholder="System prompt for title/description generation..." data-i18n="[placeholder]System prompt for title/description generation..."></textarea>
+                        </div>
+                        <div class="title_restorable">
+                            <div class="flex-container alignitemscenter">
+                                <h4 data-i18n="Greeting Generation">Greeting Generation</h4>
+                                <i class="editor_maximize fa-solid fa-maximize right_menu_button" title="Expand" data-i18n="[title]Expand" data-for="greeting_tools_greeting_prompt"></i>
+                            </div>
+                            <div id="greeting_tools_reset_greeting_prompt" class="menu_button menu_button_icon" title="Restore default" data-i18n="[title]Restore default">
+                                <i class="fa-solid fa-rotate-left"></i>
+                            </div>
+                        </div>
+                        <small class="notes" data-i18n="System prompt for generating new greeting messages.">System prompt for generating new greeting messages.</small>
+                        <div class="flex-container alignItemsCenter">
+                            <textarea id="greeting_tools_greeting_prompt" class="text_pole textarea_compact" rows="4" placeholder="System prompt for greeting generation..." data-i18n="[placeholder]System prompt for greeting generation..."></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

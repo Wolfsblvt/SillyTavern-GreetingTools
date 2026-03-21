@@ -1,12 +1,13 @@
-import { characters, menu_type, create_save, createOrEditCharacter, generateRaw, substituteParams } from '../../../../script.js';
+import { characters, menu_type, create_save, createOrEditCharacter, generateRaw, substituteParams, name1, name2 } from '../../../../script.js';
 import { renderExtensionTemplateAsync } from '../../../extensions.js';
 import { Popup, POPUP_TYPE, POPUP_RESULT } from '../../../popup.js';
 import { t } from '../../../i18n.js';
-import { debounce, flashHighlight, getStringHash } from '../../../utils.js';
+import { debounce, escapeRegex, flashHighlight, getStringHash } from '../../../utils.js';
 import { debounce_timeout } from '../../../constants.js';
 import { EXTENSION_NAME } from './index.js';
 import { generateGreetingId, getGreetingToolsData, saveGreetingToolsData, updateButtonAppearance } from './greeting-tools.js';
-import { loader, showActionLoader } from '../../../action-loader.js';
+import { loader } from '../../../action-loader.js';
+import { greetingToolsSettings } from './settings.js';
 
 /** @typedef {import('./greeting-tools.js').GreetingToolsData} GreetingToolsData */
 
@@ -478,6 +479,12 @@ export class GreetingToolsPopup {
         block.classList.add('greeting-tools-main-block');
         block.dataset.greetingId = this.#mainState.id;
 
+        // Apply collapse by default setting
+        const details = block.querySelector('details');
+        if (details instanceof HTMLDetailsElement) {
+            details.open = !greetingToolsSettings.collapseByDefault;
+        }
+
         // Update title display
         this.#updateBlockTitle(block, this.#mainState, { isMain: true });
 
@@ -570,6 +577,8 @@ export class GreetingToolsPopup {
 
         const block = /** @type {HTMLElement} */ (this.#blockTemplate.cloneNode(true));
         block.dataset.greetingId = state.id;
+
+        // Manually creating new greetings should not collapse by default, even if the setting says it should be.
 
         // Set title
         this.#updateBlockTitle(block, state, { index });
@@ -729,93 +738,6 @@ export class GreetingToolsPopup {
         });
     }
 
-    /** System prompt template for greeting title/description generation */
-    static #GENERATE_SYSTEM_PROMPT = `You are helping organize greeting messages for a character named '{{char}}'.
-
-Your task is to generate a short, memorable **title** and a brief **description** for the following greeting message.
-
-## Instructions
-- The **title** should be 2-7 words, catchy and descriptive of the greeting's theme or mood, making it unique and recognizable between the other greetings
-- The **description** should be 2-6 sentences summarizing what makes this greeting unique
-- Be creative but accurate to the greeting's content
-- Output **ONLY** the title and description in the exact format shown below
-
-{{#if charDescription}}
-## Character Description (for context)
-{{charDescription}}
-
-{{/if}}
-{{#if charPersonality}}
-## Character Personality
-{{charPersonality}}
-
-{{/if}}
-{{#if scenario}}
-## Scenario
-{{scenario}}
-
-{{/if}}
-{{#if existingTitles}}
-## Existing Greeting Titles (avoid identical or too similar names)
-{{existingTitles}}
-
-{{/if}}
-
-## Required Output Format
-You **MUST** respond with exactly this format, no other text:
-
-\`\`\`title
-[Your generated title here]
-\`\`\`
-
-\`\`\`description
-[Your generated description here]
-\`\`\``;
-
-    /** System prompt template for generating new greeting content */
-    static #GENERATE_GREETING_SYSTEM_PROMPT = `You are writing a new opening greeting message for a roleplay character named '{{char}}'.
-
-## Your Task
-Write a compelling, immersive **first message** that establishes an interesting scenario or situation. This message should:
-- Be written from {{char}}'s perspective (first person or third person narrative as appropriate)
-- Set up an engaging scene, situation, or encounter
-- Reflect the character's personality and speaking style
-- Be detailed enough to give {{user}} something to respond to
-- Include scene-setting, actions, dialogue, or inner thoughts as appropriate
-
-{{#if charDescription}}
-## Character Description
-{{charDescription}}
-
-{{/if}}
-{{#if charPersonality}}
-## Character Personality
-{{charPersonality}}
-
-{{/if}}
-{{#if scenario}}
-## Base Scenario
-{{scenario}}
-
-{{/if}}
-{{#if existingTitles}}
-## Existing Greeting Themes (try to create something different)
-The following greetings already exist. Try to create a unique scenario that differs from these:
-{{existingTitles}}
-
-{{/if}}
-{{#if customPrompt}}
-## Special Instructions
-The user has requested the following specific theme or scenario for this greeting:
-**{{customPrompt}}**
-
-Make sure to incorporate this into the greeting while staying true to the character.
-
-{{/if}}
-## Output Format
-Write ONLY the greeting message itself. Do not include titles, labels, explanations, or meta-commentary.
-Just write the actual greeting text that {{char}} would say/do to start a conversation or scene with {{user}}.`;
-
     /**
      * Collects existing greeting titles (excluding the current state).
      * @param {GreetingEditorState} state - The current greeting state
@@ -851,8 +773,8 @@ Just write the actual greeting text that {{char}} would say/do to start a conver
         const existingTitles = this.#getExistingTitles(state);
         const dynamicMacros = { existingTitles };
 
-        // Substitute macros in system prompt
-        const systemPrompt = substituteParams(GreetingToolsPopup.#GENERATE_SYSTEM_PROMPT, undefined, undefined, dynamicMacros);
+        // Substitute macros in system prompt (uses customizable prompt from settings)
+        const systemPrompt = substituteParams(greetingToolsSettings.generateSystemPrompt, undefined, undefined, dynamicMacros);
 
         // Main prompt is just the greeting content
         const prompt = state.content;
@@ -1408,8 +1330,8 @@ Just write the actual greeting text that {{char}} would say/do to start a conver
             customPrompt: customPrompt || '',
         };
 
-        // Substitute macros in system prompt
-        const systemPrompt = substituteParams(GreetingToolsPopup.#GENERATE_GREETING_SYSTEM_PROMPT, undefined, undefined, dynamicMacros);
+        // Substitute macros in system prompt (uses customizable prompt from settings)
+        const systemPrompt = substituteParams(greetingToolsSettings.generateGreetingSystemPrompt, undefined, undefined, dynamicMacros);
 
         // The prompt to the LLM is minimal - system prompt has all context
         const prompt = customPrompt
@@ -1435,11 +1357,16 @@ Just write the actual greeting text that {{char}} would say/do to start a conver
             }
 
             // Clean up the response - remove any leading/trailing whitespace
-            const content = response.trim();
+            let content = response.trim();
 
             if (!content) {
                 toastr.error(t`Generated content is empty`);
                 return null;
+            }
+
+            // Replace character/user names with macros if setting is enabled
+            if (greetingToolsSettings.replaceNamesWithMacros) {
+                content = this.#replaceNamesWithMacros(content);
             }
 
             return content;
@@ -1456,6 +1383,40 @@ Just write the actual greeting text that {{char}} would say/do to start a conver
         } finally {
             await greetingLoader.hide();
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Name Replacement Utility
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Replaces character and user names with {{char}} and {{user}} macros.
+     * @param {string} content - The content to process
+     * @returns {string} Content with names replaced by macros
+     */
+    #replaceNamesWithMacros(content) {
+        if (!content) return content;
+
+        // Get character name (name2 is the current character name)
+        const charName = this.#character?.name || name2;
+        // Get user name (name1 is the current user/persona name)
+        const userName = name1;
+
+        let result = content;
+
+        // Replace character name with {{char}} (case-insensitive, word boundary)
+        if (charName) {
+            const charRegex = new RegExp(`\\b${escapeRegex(charName)}\\b`, 'gi');
+            result = result.replace(charRegex, '{{char}}');
+        }
+
+        // Replace user name with {{user}} (case-insensitive, word boundary)
+        if (userName) {
+            const userRegex = new RegExp(`\\b${escapeRegex(userName)}\\b`, 'gi');
+            result = result.replace(userRegex, '{{user}}');
+        }
+
+        return result;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
