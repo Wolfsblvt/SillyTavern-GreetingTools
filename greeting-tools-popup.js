@@ -114,6 +114,9 @@ export class GreetingToolsPopup {
         // Setup toolbar handlers
         this.#setupToolbarHandlers(list);
 
+        // Setup keyboard navigation
+        this.#setupKeyboardNavigation();
+
         // Create and show popup
         this.#popup = new Popup(this.#template, POPUP_TYPE.TEXT, '', {
             wide: true,
@@ -777,6 +780,57 @@ export class GreetingToolsPopup {
         details.forEach(detail => {
             if (detail instanceof HTMLDetailsElement) {
                 detail.open = expand;
+            }
+        });
+    }
+
+    /**
+     * Sets up keyboard navigation for greeting blocks.
+     * - Arrow Up/Down: Navigate between blocks when not in textarea
+     * - Ctrl+Arrow Up/Down: Navigate between blocks when in textarea
+     * - Navigation wraps circularly
+     */
+    #setupKeyboardNavigation() {
+        if (!this.#template) return;
+
+        this.#template.addEventListener('keydown', (e) => {
+            if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+
+            const target = e.target;
+            const isInTextarea = target instanceof HTMLTextAreaElement;
+            const isCtrlPressed = e.ctrlKey || e.metaKey;
+
+            // In textarea: only handle with CTRL modifier
+            // Outside textarea: handle all arrow navigation, even without CTRL
+            if (isInTextarea && !isCtrlPressed) return;
+
+            // Find current greeting block
+            const currentBlock = /** @type {HTMLElement | null} */ (
+                target instanceof Element ? target.closest('.greeting-tools-block') : null
+            );
+            if (!currentBlock) return;
+
+            // Get all greeting blocks (main + alts) in DOM order
+            const allBlocks = /** @type {HTMLElement[]} */ (
+                Array.from(this.#template?.querySelectorAll('.greeting-tools-block') ?? [])
+            );
+            if (allBlocks.length === 0) return;
+
+            const currentIndex = allBlocks.indexOf(currentBlock);
+            if (currentIndex === -1) return;
+
+            // Calculate next index with circular wrapping
+            const direction = e.key === 'ArrowUp' ? -1 : 1;
+            const nextIndex = (currentIndex + direction + allBlocks.length) % allBlocks.length;
+            const nextBlock = allBlocks[nextIndex];
+
+            // Focus the summary element (keyboard-interactable, space toggles)
+            const summary = nextBlock.querySelector('summary');
+            if (summary instanceof HTMLElement) {
+                e.preventDefault();
+                summary.focus();
+                // Scroll into view if needed
+                nextBlock.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }
         });
     }
