@@ -34,7 +34,13 @@
                                 <i class="fa-solid fa-rotate-left"></i>
                             </div>
                         </div>
-                        <small class="notes" data-i18n="System prompt for auto-generating titles and descriptions for greetings.">System prompt for auto-generating titles and descriptions for greetings.</small>
+                        <small class="notes" data-i18n="System prompt for auto-generating titles and descriptions for greetings.">
+                            <span data-i18n="System prompt for auto-generating titles and descriptions for greetings.">System prompt for auto-generating titles and descriptions for greetings.</span>
+                            <span>The following macros are available to use:</span>
+                            <ul>
+                                <li data-i18n="existingTitles contains existing greeting titles to avoid duplicates"><code>{{existingTitles}}</code> contains existing greeting titles to avoid duplicates</li>
+                            </ul>
+                        </small>
                         <div class="flex-container alignItemsCenter">
                             <textarea id="greeting_tools_generate_prompt" class="text_pole textarea_compact" rows="4" placeholder="System prompt for title/description generation..." data-i18n="[placeholder]System prompt for title/description generation..."></textarea>
                         </div>
@@ -47,7 +53,14 @@
                                 <i class="fa-solid fa-rotate-left"></i>
                             </div>
                         </div>
-                        <small class="notes" data-i18n="System prompt for generating new greeting messages.">System prompt for generating new greeting messages.</small>
+                        <small class="notes" data-i18n="System prompt for generating new greeting messages.">
+                            <span data-i18n="System prompt for generating new greeting messages.">System prompt for generating new greeting messages.</span>
+                            <span data-i18n="The following additional macors are available to use:">The following additional macors are available to use:</span>
+                            <ul>
+                                <li data-i18n="customPrompt contains user-requested theme/scenario if provided"><code>{{customPrompt}}</code> contains user-requested theme/scenario if provided</li>
+                                <li data-i18n="existingTitles contains existing greeting titles to avoid duplicates"><code>{{existingTitles}}</code> contains existing greeting titles to avoid duplicates</li>
+                            </ul>
+                        </small>
                         <div class="flex-container alignItemsCenter">
                             <textarea id="greeting_tools_greeting_prompt" class="text_pole textarea_compact" rows="4" placeholder="System prompt for greeting generation..." data-i18n="[placeholder]System prompt for greeting generation..."></textarea>
                         </div>

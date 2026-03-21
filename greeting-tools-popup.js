@@ -1,6 +1,6 @@
 import { characters, menu_type, create_save, createOrEditCharacter, generateRaw, substituteParams, name1, name2 } from '../../../../script.js';
 import { renderExtensionTemplateAsync } from '../../../extensions.js';
-import { Popup, POPUP_TYPE, POPUP_RESULT } from '../../../popup.js';
+import { Popup, POPUP_TYPE, POPUP_RESULT, PopupUtils } from '../../../popup.js';
 import { t } from '../../../i18n.js';
 import { debounce, escapeRegex, flashHighlight, getStringHash } from '../../../utils.js';
 import { debounce_timeout } from '../../../constants.js';
@@ -1284,7 +1284,7 @@ export class GreetingToolsPopup {
     // ─────────────────────────────────────────────────────────────────────────
 
     /** Default placeholder text for the generate greeting popup */
-    static #GENERATE_GREETING_PLACEHOLDER = t`Describe the scenario or theme for this greeting... (leave empty for a general new greeting)`;
+    static #GENERATE_GREETING_PLACEHOLDER = t`Describe what kind of greeting scenario you want to generate. Leave empty for a general new greeting based on the character.`;
 
     /**
      * Collects all existing greeting titles for context.
@@ -1402,7 +1402,11 @@ export class GreetingToolsPopup {
      * @returns {Promise<string | null>} The custom prompt text, empty string for default, or null if cancelled
      */
     async #showGenerateGreetingPromptPopup() {
-        const popup = new Popup(t`Describe what kind of greeting scenario you want to generate. Leave empty for a general new greeting based on the character.`, POPUP_TYPE.INPUT, '', {
+        const popupContent = PopupUtils.BuildTextWithHeader(
+            t`Generate Greeting`,
+            t`Scenario or prompt for the new greeting:`,
+        );
+        const popup = new Popup(popupContent, POPUP_TYPE.INPUT, '', {
             large: false,
             rows: 7,
             placeholder: GreetingToolsPopup.#GENERATE_GREETING_PLACEHOLDER,
