@@ -54,6 +54,9 @@ export class GreetingToolsPopup {
     /** @type {number | undefined} */
     #highlightSwipeIndex;
 
+    /** @type {Map<string, boolean>} Stores the open/closed state of each greeting by ID */
+    #toggleStates = new Map();
+
     /**
      * @returns {Character}
      */
@@ -291,15 +294,15 @@ export class GreetingToolsPopup {
                         break;
                     }
                 }
-
-                this.#altStates.push({
-                    id: matchedMeta?.id ?? generateGreetingId(),
-                    content,
-                    title: matchedMeta?.title ?? '',
-                    description: matchedMeta?.description ?? '',
-                    contentHash,
-                });
             }
+
+            this.#altStates.push({
+                id: matchedMeta?.id ?? generateGreetingId(),
+                content,
+                title: matchedMeta?.title ?? '',
+                description: matchedMeta?.description ?? '',
+                contentHash,
+            });
         }
     }
 
@@ -427,6 +430,35 @@ export class GreetingToolsPopup {
     }
 
     /**
+     * Captures the current open/closed state of all greeting details elements.
+     */
+    #captureToggleStates() {
+        if (!this.#template) return;
+        const blocks = this.#template.querySelectorAll('.greeting-tools-block');
+        blocks.forEach(block => {
+            if (!(block instanceof HTMLElement)) return;
+            const greetingId = block.dataset.greetingId;
+            const details = block.querySelector('details');
+            if (greetingId && details instanceof HTMLDetailsElement) {
+                this.#toggleStates.set(greetingId, details.open);
+            }
+        });
+    }
+
+    /**
+     * Gets the toggle state for a greeting, with fallback to global setting.
+     * @param {string} greetingId - The greeting ID
+     * @returns {boolean} Whether the details should be open
+     */
+    #getToggleState(greetingId) {
+        if (this.#toggleStates.has(greetingId)) {
+            return this.#toggleStates.get(greetingId) ?? true;
+        }
+        // Default to global setting for greetings without stored state
+        return !greetingToolsSettings.collapseByDefault;
+    }
+
+    /**
      * Re-renders all alternate greeting block indices and titles.
      * @param {HTMLElement} list
      */
@@ -471,6 +503,9 @@ export class GreetingToolsPopup {
         const container = this.#template.querySelector('.greeting-tools-main-container');
         if (!(container instanceof HTMLElement)) return;
 
+        // Capture toggle state before clearing
+        this.#captureToggleStates();
+
         // Clear existing content
         container.innerHTML = '';
 
@@ -479,10 +514,10 @@ export class GreetingToolsPopup {
         block.classList.add('greeting-tools-main-block');
         block.dataset.greetingId = this.#mainState.id;
 
-        // Apply collapse by default setting
+        // Apply toggle state (preserves user's open/closed choice across re-renders)
         const details = block.querySelector('details');
         if (details instanceof HTMLDetailsElement) {
-            details.open = !greetingToolsSettings.collapseByDefault;
+            details.open = this.#getToggleState(this.#mainState.id);
         }
 
         // Update title display
@@ -568,9 +603,10 @@ export class GreetingToolsPopup {
      * @param {GreetingEditorState} state
      * @param {number} index
      * @param {HTMLElement} list
+     * @param {{ forceOpen?: boolean }} [options={}] - Options for block creation
      * @returns {HTMLElement}
      */
-    #createGreetingBlock(state, index, list) {
+    #createGreetingBlock(state, index, list, { forceOpen } = {}) {
         if (!this.#blockTemplate) {
             throw new Error('Block template not loaded');
         }
@@ -578,7 +614,11 @@ export class GreetingToolsPopup {
         const block = /** @type {HTMLElement} */ (this.#blockTemplate.cloneNode(true));
         block.dataset.greetingId = state.id;
 
-        // Manually creating new greetings should not collapse by default, even if the setting says it should be.
+        // Apply toggle state: forceOpen overrides, then check stored state, then use global setting
+        const details = block.querySelector('details');
+        if (details instanceof HTMLDetailsElement) {
+            details.open = forceOpen ?? this.#getToggleState(state.id);
+        }
 
         // Set title
         this.#updateBlockTitle(block, state, { index });
@@ -672,6 +712,9 @@ export class GreetingToolsPopup {
      * @param {HTMLElement} list
      */
     #renderGreetingsList(list) {
+        // Capture current toggle states before re-rendering
+        this.#captureToggleStates();
+
         // Clear existing alternate blocks (but keep the main greeting and hint)
         const blocks = list.querySelectorAll('.greeting-tools-block:not(.greeting-tools-main-block)');
         blocks.forEach(block => block.remove());
@@ -1160,8 +1203,8 @@ export class GreetingToolsPopup {
         this.#syncGreetingsToCharacter();
         this.#saveDebounced();
 
-        // Append the new block
-        const block = this.#createGreetingBlock(newState, this.#altStates.length - 1, list);
+        // Append the new block - force open for manually added empty greetings
+        const block = this.#createGreetingBlock(newState, this.#altStates.length - 1, list, { forceOpen: true });
         list.appendChild(block);
 
         // Update UI states
