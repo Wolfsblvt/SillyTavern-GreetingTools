@@ -357,8 +357,8 @@ export class GreetingToolsPopup {
      * Loads the HTML templates for popup and greeting block.
      */
     async #loadTemplates() {
-        const popupHtml = await renderExtensionTemplateAsync(`third-party/${EXTENSION_NAME}`, 'greeting-tools-popup');
-        const blockHtml = await renderExtensionTemplateAsync(`third-party/${EXTENSION_NAME}`, 'greeting-block');
+        const popupHtml = await renderExtensionTemplateAsync(`third-party/${EXTENSION_NAME}`, 'templates/greeting-tools-popup');
+        const blockHtml = await renderExtensionTemplateAsync(`third-party/${EXTENSION_NAME}`, 'templates/greeting-block');
 
         // Create template element for block cloning
         const blockContainer = document.createElement('div');

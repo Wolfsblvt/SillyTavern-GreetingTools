@@ -360,7 +360,7 @@ async function injectGreetingSelector() {
 
     // Load template if needed
     if (!selectorTemplate) {
-        const html = await renderExtensionTemplateAsync(`third-party/${EXTENSION_NAME}`, 'greeting-selector');
+        const html = await renderExtensionTemplateAsync(`third-party/${EXTENSION_NAME}`, 'templates/greeting-selector');
         const container = document.createElement('div');
         container.innerHTML = html;
         selectorTemplate = /** @type {HTMLElement} */ (container.firstElementChild);
