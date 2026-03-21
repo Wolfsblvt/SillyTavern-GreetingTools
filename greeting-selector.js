@@ -89,12 +89,22 @@ function getGreetingOptions() {
         const content = altGreetings[i];
         const contentHash = getStringHash(content);
 
-        // Find matching metadata by content hash
+        // Find matching metadata - first by index (via indexMap), then by contentHash
         let matchedMeta = null;
-        for (const [, meta] of Object.entries(metadata.greetings)) {
-            if (meta.contentHash === contentHash) {
-                matchedMeta = meta;
-                break;
+
+        // Primary: match by index using indexMap (most reliable, survives content normalization)
+        const indexMappedId = metadata.indexMap?.[i];
+        if (indexMappedId && metadata.greetings[indexMappedId]) {
+            matchedMeta = metadata.greetings[indexMappedId];
+        }
+
+        // Fallback: match by contentHash (for backwards compatibility or reordered greetings)
+        if (!matchedMeta) {
+            for (const [, meta] of Object.entries(metadata.greetings)) {
+                if (meta.contentHash === contentHash) {
+                    matchedMeta = meta;
+                    break;
+                }
             }
         }
 

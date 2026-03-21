@@ -6,7 +6,7 @@ import { debounce, flashHighlight, getStringHash } from '../../../utils.js';
 import { debounce_timeout } from '../../../constants.js';
 import { EXTENSION_NAME } from './index.js';
 import { generateGreetingId, getGreetingToolsData, saveGreetingToolsData, updateButtonAppearance } from './greeting-tools.js';
-import { showActionLoader } from '../../../action-loader.js';
+import { loader, showActionLoader } from '../../../action-loader.js';
 
 /** @typedef {import('./greeting-tools.js').GreetingToolsData} GreetingToolsData */
 
@@ -273,27 +273,32 @@ export class GreetingToolsPopup {
             const content = greetings[i];
             const contentHash = getStringHash(content);
 
-            // Try to find existing metadata by content hash
-            let matchedId = null;
-            let matchedTitle = '';
-            let matchedDescription = '';
+            // Try to find existing metadata - first by index (via indexMap), then by contentHash
+            let matchedMeta = null;
 
-            for (const [gId, meta] of Object.entries(metadata.greetings)) {
-                if (meta.contentHash === contentHash) {
-                    matchedId = gId;
-                    matchedTitle = meta.title ?? '';
-                    matchedDescription = meta.description ?? '';
-                    break;
-                }
+            // Primary: match by index using indexMap (most reliable, survives content normalization)
+            const indexMappedId = metadata.indexMap?.[i];
+            if (indexMappedId && metadata.greetings[indexMappedId]) {
+                matchedMeta = metadata.greetings[indexMappedId];
             }
 
-            this.#altStates.push({
-                id: matchedId ?? generateGreetingId(),
-                content,
-                title: matchedTitle,
-                description: matchedDescription,
-                contentHash,
-            });
+            // Fallback: match by contentHash (for backwards compatibility or reordered greetings)
+            if (!matchedMeta) {
+                for (const [, meta] of Object.entries(metadata.greetings)) {
+                    if (meta.contentHash === contentHash) {
+                        matchedMeta = meta;
+                        break;
+                    }
+                }
+
+                this.#altStates.push({
+                    id: matchedMeta?.id ?? generateGreetingId(),
+                    content,
+                    title: matchedMeta?.title ?? '',
+                    description: matchedMeta?.description ?? '',
+                    contentHash,
+                });
+            }
         }
     }
 
@@ -852,8 +857,8 @@ Just write the actual greeting text that {{char}} would say/do to start a conver
         // Main prompt is just the greeting content
         const prompt = state.content;
 
-        const loader = showLoader
-            ? showActionLoader({ message: t`Generating title and description...` })
+        const genLoader = showLoader
+            ? loader.show({ message: t`Generating title and description...` })
             : null;
 
         try {
@@ -908,7 +913,7 @@ Just write the actual greeting text that {{char}} would say/do to start a conver
             }
             return null;
         } finally {
-            if (loader) await loader.hide();
+            await genLoader?.hide();
         }
     }
 
@@ -1290,70 +1295,85 @@ Just write the actual greeting text that {{char}} would say/do to start a conver
         // User cancelled
         if (customPrompt === null) return;
 
-        // Generate the greeting content
-        const content = await this.#generateGreetingContent(customPrompt);
-        if (!content) return;
+        /** @type {HTMLElement} New greeting block */
+        let block;
+        /** @type {Set<JQuery<HTMLElement>>} A set of all temporary toasts */
+        let tempToasts = new Set();
 
-        // Create new state with generated content
-        const newState = {
-            id: generateGreetingId(),
-            content,
-            title: '',
-            description: '',
-            contentHash: getStringHash(content),
-        };
+        // Show loader without info, just so we can wrap the two separate actions into one big blocking exectuion
+        const wrappingLoader = loader.show({ toastMode: loader.ToastMode.NONE });
 
-        // Add to states and sync
-        this.#altStates.push(newState);
-        this.#syncGreetingsToCharacter();
-        await this.#saveDebounced();
+        try {
+            // Generate the greeting content
+            const content = await this.#generateGreetingContent(customPrompt);
+            if (!content) return;
 
-        // Append the new block
-        const block = this.#createGreetingBlock(newState, this.#altStates.length - 1, list);
-        list.appendChild(block);
+            // Create new state with generated content
+            const newState = /** @type {GreetingEditorState} */ ({
+                id: generateGreetingId(),
+                content,
+                title: '',
+                description: '',
+                contentHash: getStringHash(content),
+            });
 
-        // Update UI states
-        this.#updateMoveButtonStates(list);
-        this.#updateHintVisibility(list);
-        this.#updateInfoLine();
+            // Add to states and sync
+            this.#altStates.push(newState);
+            this.#syncGreetingsToCharacter();
+            this.#saveDebounced();
 
-        // Scroll to bottom to show new greeting
-        list.scrollTop = list.scrollHeight;
+            // Append the new block
+            block = this.#createGreetingBlock(newState, this.#altStates.length - 1, list);
+            list.appendChild(block);
 
-        // Update button count
-        updateButtonAppearance(this.#chid);
+            // Update UI states
+            this.#updateMoveButtonStates(list);
+            this.#updateHintVisibility(list);
+            this.#updateInfoLine();
 
-        // Show persistent success toast for content generation (stays visible during title/desc generation)
-        const contentSuccessToast = toastr.success(t`Greeting content generated successfully`, '', {
-            timeOut: 0,
-            extendedTimeOut: 0,
-            tapToDismiss: false,
-        });
+            // Scroll to bottom to show new greeting
+            list.scrollTop = list.scrollHeight;
 
-        // Generate title and description with blocking loader (shows its own toast below the success toast)
-        const generated = await this.#generateTitleAndDescription(newState);
+            // Update button count
+            updateButtonAppearance(this.#chid);
 
-        // Clear the content success toast now that we're done
-        toastr.clear(contentSuccessToast, { force: true });
+            // Show persistent success toast for content generation (stays visible during title/desc generation)
+            const successToast = toastr.success(t`Greeting content generated successfully`, '', {
+                timeOut: 0,
+                extendedTimeOut: 0,
+                tapToDismiss: false,
+            });
+            tempToasts.add(successToast);
 
-        if (generated) {
-            newState.title = generated.title;
-            newState.description = generated.description;
+            // Generate title and description with blocking loader (shows its own toast below the success toast)
+            const generated = await this.#generateTitleAndDescription(newState);
 
-            // Update the block's display
-            this.#updateBlockTitle(block, newState, { index: this.#altStates.length - 1 });
+            if (generated) {
+                newState.title = generated.title;
+                newState.description = generated.description;
 
-            // Save the updated metadata immediately (not debounced - we need guaranteed save)
-            await this.#saveAllMetadata();
+                // Update the block's display
+                this.#updateBlockTitle(block, newState, { index: this.#altStates.length - 1 });
 
-            toastr.success(t`New greeting created with title and description`);
-        } else {
-            // Content was generated but title/description failed - still a partial success
-            toastr.warning(t`Greeting created. Could not generate title/description - add them manually.`);
+                // We still do a debounced save, to prevent blocking. User should simply not reload this soon...
+                this.#saveDebounced();
+
+                toastr.success(t`New greeting created with title and description`);
+            } else {
+                // Content was generated but title/description failed - still a partial success
+                toastr.warning(t`Greeting created. Could not generate title/description - add them manually.`);
+            }
+        } finally {
+            // Clear all open temp toasts
+            for (const toast of tempToasts) {
+                toastr.clear(toast, { force: true });
+            }
+            tempToasts.clear();
+            await wrappingLoader.hide();
         }
 
         // Focus the textarea
-        const textarea = block.querySelector('.greeting-tools-textarea');
+        const textarea = block?.querySelector('.greeting-tools-textarea');
         if (textarea instanceof HTMLTextAreaElement) {
             textarea.focus();
         }
@@ -1396,7 +1416,7 @@ Just write the actual greeting text that {{char}} would say/do to start a conver
             ? t`Generate a greeting for {{char}} with this theme:\n${customPrompt}`
             : t`Generate a new greeting for {{char}} that differs from existing greetings.`;
 
-        const loader = showActionLoader({
+        const greetingLoader = loader.show({
             message: t`Generating new greeting...`,
         });
 
@@ -1434,7 +1454,7 @@ Just write the actual greeting text that {{char}} would say/do to start a conver
             }
             return null;
         } finally {
-            await loader.hide();
+            await greetingLoader.hide();
         }
     }
 
