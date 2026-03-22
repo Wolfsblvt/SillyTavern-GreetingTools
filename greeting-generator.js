@@ -3,13 +3,81 @@
  * Used by both the Greeting Tools popup and the inline greeting selector.
  */
 
-import { characters, generateRaw, substituteParams, name1, name2, this_chid } from '../../../../script.js';
+import { characters, generateRaw, substituteParams, name1, name2, this_chid, chat_metadata, saveChatConditional } from '../../../../script.js';
 import { Popup, POPUP_TYPE } from '../../../popup.js';
 import { t } from '../../../i18n.js';
 import { escapeRegex } from '../../../utils.js';
 import { greetingToolsSettings } from './settings.js';
-import { getGreetingToolsData } from './greeting-tools.js';
+import { getGreetingToolsData, generateGreetingId } from './greeting-tools.js';
 import { loader } from '/scripts/action-loader.js';
+import { EXTENSION_NAME } from './index.js';
+
+/**
+ * @typedef {Object} TempGreetingData
+ * @property {string} id - Unique greeting ID
+ * @property {string} title - Display title
+ * @property {string} description - Description
+ * @property {string} content - Greeting text content
+ * @property {number} swipeIndex - Index in the swipes array
+ */
+
+/**
+ * Gets temp greetings from chat metadata.
+ * @returns {Map<number, TempGreetingData>} Map of swipe index to temp greeting data
+ */
+export function getTempGreetings() {
+    const stored = chat_metadata[EXTENSION_NAME]?.tempGreetings;
+    if (!stored || typeof stored !== 'object') {
+        return new Map();
+    }
+    // Convert object to Map (JSON doesn't preserve Map)
+    return new Map(Object.entries(stored).map(([k, v]) => [Number(k), v]));
+}
+
+/**
+ * Saves temp greetings to chat metadata.
+ * @param {Map<number, TempGreetingData>} tempGreetings - Map of temp greetings
+ * @param {object} [options] - Options
+ * @param {boolean} [options.saveChat=true] - Whether to save the chat
+ */
+export async function saveTempGreetings(tempGreetings, { saveChat = true } = {}) {
+    if (!chat_metadata[EXTENSION_NAME]) {
+        chat_metadata[EXTENSION_NAME] = {};
+    }
+    // Convert Map to object for JSON serialization
+    chat_metadata[EXTENSION_NAME].tempGreetings = Object.fromEntries(tempGreetings);
+    if (saveChat) {
+        await saveChatConditional();
+    }
+}
+
+/**
+ * Adds a temp greeting to chat metadata.
+ * @param {number} swipeIndex - Swipe index
+ * @param {TempGreetingData} data - Temp greeting data
+ */
+export async function addTempGreeting(swipeIndex, data) {
+    const tempGreetings = getTempGreetings();
+    tempGreetings.set(swipeIndex, { ...data, swipeIndex });
+    await saveTempGreetings(tempGreetings);
+}
+
+/**
+ * Removes a temp greeting from chat metadata.
+ * @param {number} swipeIndex - Swipe index to remove
+ */
+export async function removeTempGreeting(swipeIndex) {
+    const tempGreetings = getTempGreetings();
+    tempGreetings.delete(swipeIndex);
+    await saveTempGreetings(tempGreetings);
+}
+
+/**
+ * Clears all temp greetings from chat metadata.
+ */
+export async function clearTempGreetings() {
+    await saveTempGreetings(new Map());
+}
 
 /** Default placeholder text for the generate greeting popup */
 const GENERATE_GREETING_PLACEHOLDER = t`Describe what kind of greeting scenario you want to generate. Leave empty for a general new greeting based on the character.`;
@@ -240,5 +308,90 @@ export async function generateTitleAndDescription(greetingContent, { existingTit
         return null;
     } finally {
         await titleLoader.hide();
+    }
+}
+
+/**
+ * @typedef {Object} GeneratedGreeting
+ * @property {string} id - Unique greeting ID
+ * @property {string} content - Generated greeting content
+ * @property {string} title - Generated or default title
+ * @property {string} description - Generated or empty description
+ */
+
+/**
+ * Unified greeting generation flow - shows popup, generates content, optionally generates title/desc.
+ * @param {object} [options] - Generation options
+ * @param {string} [options.popupTitle] - Custom popup title
+ * @param {string} [options.defaultTitle] - Default title if not generating title/desc
+ * @param {string} [options.loaderMessage] - Custom loader message for content generation
+ * @param {string} [options.existingTitles] - Pre-computed existing titles for context
+ * @param {(content: string) => void} [options.onContentGenerated] - Callback after content is generated (before title/desc)
+ * @returns {Promise<GeneratedGreeting | null>} Generated greeting data or null if cancelled/failed
+ */
+export async function generateGreetingFlow({
+    popupTitle,
+    defaultTitle = '',
+    loaderMessage,
+    existingTitles,
+    onContentGenerated,
+} = {}) {
+    // Show popup
+    const popupResult = await showGenerateGreetingPopup({ title: popupTitle });
+    if (popupResult === null) return null;
+
+    const { prompt: customPrompt, generateTitleDesc } = popupResult;
+
+    /** @type {Set<JQuery<HTMLElement>>} */
+    const tempToasts = new Set();
+
+    // Show wrapping loader
+    const wrappingLoader = loader.show({ toastMode: loader.ToastMode.NONE });
+
+    try {
+        // Generate content
+        const content = await generateGreetingContent(customPrompt, {
+            loaderMessage,
+            existingTitles,
+        });
+        if (!content) return null;
+
+        // Notify caller that content is ready (useful for UI updates)
+        onContentGenerated?.(content);
+
+        // Initialize result
+        let title = defaultTitle;
+        let description = '';
+
+        if (generateTitleDesc) {
+            // Show persistent success toast
+            const successToast = toastr.success(t`Greeting content generated`, '', {
+                timeOut: 0,
+                extendedTimeOut: 0,
+                tapToDismiss: false,
+            });
+            tempToasts.add(successToast);
+
+            // Generate title/description
+            const generated = await generateTitleAndDescription(content, { existingTitles });
+            if (generated) {
+                title = generated.title;
+                description = generated.description;
+            }
+        }
+
+        return {
+            id: generateGreetingId(),
+            content,
+            title,
+            description,
+        };
+    } finally {
+        // Clear temp toasts
+        for (const toast of tempToasts) {
+            toastr.clear(toast, { force: true });
+        }
+        tempToasts.clear();
+        await wrappingLoader.hide();
     }
 }

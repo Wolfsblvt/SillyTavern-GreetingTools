@@ -1,13 +1,17 @@
-import { characters, chat, eventSource, event_types, saveChatConditional, swipe, this_chid } from '../../../../script.js';
+import { characters, chat, eventSource, event_types, swipe, this_chid } from '../../../../script.js';
 import { SWIPE_DIRECTION } from '../../../constants.js';
 import { renderExtensionTemplateAsync } from '../../../extensions.js';
 import { t } from '../../../i18n.js';
 import { escapeHtml, getStringHash } from '../../../utils.js';
 import { performFuzzySearch } from '../../../power-user.js';
 import { EXTENSION_NAME } from './index.js';
-import { generateGreetingId, getGreetingToolsData, openGreetingToolsPopup, saveGreetingToolsData } from './greeting-tools.js';
-import { showGenerateGreetingPopup, generateGreetingContent, generateTitleAndDescription } from './greeting-generator.js';
-import { loader } from '/scripts/action-loader.js';
+import { getGreetingToolsData, openGreetingToolsPopup, saveGreetingToolsData } from './greeting-tools.js';
+import {
+    getTempGreetings,
+    addTempGreeting,
+    removeTempGreeting,
+    generateGreetingFlow,
+} from './greeting-generator.js';
 
 /**
  * @typedef {Object} GreetingOption
@@ -23,13 +27,6 @@ let selectorTemplate = null;
 
 /** @type {GreetingOption[]} */
 let cachedOptions = [];
-
-/**
- * Tracks temporary generated greetings by swipe index.
- * Maps swipe index to greeting metadata (id, title, description, content).
- * @type {Map<number, { id: string, title: string, description: string, content: string }>}
- */
-const tempGreetings = new Map();
 
 /**
  * Checks if the first message is a character greeting that we can display info for.
@@ -241,6 +238,7 @@ function updateSelectorUI(selector, { rebuildDropdown = false } = {}) {
     const currentIndex = getCurrentSwipeId();
     const isChangeable = isGreetingChangeable();
     const currentOption = findOptionBySwipeIndex(options, currentIndex);
+    const tempGreetings = getTempGreetings();
     const isTempGreeting = tempGreetings.has(currentIndex);
     const tempData = tempGreetings.get(currentIndex);
 
@@ -483,48 +481,20 @@ function setupSelectorEventHandlers(selector) {
 
 /**
  * Handles generating a temporary greeting and adding it as a swipe.
+ * Uses the unified generateGreetingFlow for the generation logic.
  * @param {HTMLElement} selector
  */
 async function handleGenerateTempGreeting(selector) {
-    // Show popup with text input for custom prompt (with "temporary" in title)
-    const popupResult = await showGenerateGreetingPopup({ title: t`Generate Temporary Greeting` });
-    if (popupResult === null) return;
+    // Use unified generation flow
+    const generated = await generateGreetingFlow({
+        popupTitle: t`Generate Temporary Greeting`,
+        defaultTitle: t`Temporary Greeting`,
+        loaderMessage: t`Generating temporary greeting...`,
+    });
 
-    const { prompt: customPrompt, generateTitleDesc } = popupResult;
-
-    // Show wrapping loader
-    const wrappingLoader = loader.show({ toastMode: loader.ToastMode.NONE });
-
-    /** @type {Set<JQuery<HTMLElement>>} A set of all temporary toasts */
-    const tempToasts = new Set();
+    if (!generated) return;
 
     try {
-        // Generate the greeting content
-        const content = await generateGreetingContent(customPrompt, {
-            loaderMessage: t`Generating temporary greeting...`,
-        });
-        if (!content) return;
-
-        // Generate title/description if requested
-        let title = t`Temporary Greeting`;
-        let description = '';
-
-        if (generateTitleDesc) {
-            // Show persistent success toast for content generation (stays visible during title/desc generation)
-            const successToast = toastr.success(t`Greeting content generated`, '', {
-                timeOut: 0,
-                extendedTimeOut: 0,
-                tapToDismiss: false,
-            });
-            tempToasts.add(successToast);
-
-            const generated = await generateTitleAndDescription(content);
-            if (generated) {
-                title = generated.title;
-                description = generated.description;
-            }
-        }
-
         // Add as a new swipe to the first message
         const firstMessage = chat[0];
         if (!firstMessage) return;
@@ -538,20 +508,17 @@ async function handleGenerateTempGreeting(selector) {
 
         // Add new swipe
         const newSwipeIndex = firstMessage.swipes.length;
-        firstMessage.swipes.push(content);
+        firstMessage.swipes.push(generated.content);
         firstMessage.swipe_info.push({});
 
-        // Track as temp greeting
-        const tempId = generateGreetingId();
-        tempGreetings.set(newSwipeIndex, {
-            id: tempId,
-            title,
-            description,
-            content,
+        // Track as temp greeting (persisted to chat_metadata)
+        await addTempGreeting(newSwipeIndex, {
+            id: generated.id,
+            title: generated.title,
+            description: generated.description,
+            content: generated.content,
+            swipeIndex: newSwipeIndex,
         });
-
-        // Save chat first
-        await saveChatConditional();
 
         // Use swipe() to switch to the new swipe - this handles proper message rendering
         await swipe(null, SWIPE_DIRECTION.RIGHT, {
@@ -565,15 +532,8 @@ async function handleGenerateTempGreeting(selector) {
 
         toastr.success(t`Temporary greeting generated`);
     } catch (error) {
-        console.error('[GreetingTools] Failed to generate temp greeting:', error);
-        toastr.error(t`Failed to generate greeting`);
-    } finally {
-        // Clear all temp toasts
-        for (const toast of tempToasts) {
-            toastr.clear(toast, { force: true });
-        }
-        tempToasts.clear();
-        await wrappingLoader.hide();
+        console.error('[GreetingTools] Failed to add temp greeting:', error);
+        toastr.error(t`Failed to add greeting`);
     }
 }
 
@@ -583,6 +543,7 @@ async function handleGenerateTempGreeting(selector) {
  */
 async function handleSaveTempGreeting(selector) {
     const currentSwipeId = getCurrentSwipeId();
+    const tempGreetings = getTempGreetings();
     const tempData = tempGreetings.get(currentSwipeId);
 
     if (!tempData) {
@@ -625,8 +586,8 @@ async function handleSaveTempGreeting(selector) {
     // Save metadata
     saveGreetingToolsData(metadata, { chid: this_chid });
 
-    // Remove from temp tracking
-    tempGreetings.delete(currentSwipeId);
+    // Remove from temp tracking (persisted)
+    await removeTempGreeting(currentSwipeId);
 
     // Save character
     // @ts-ignore
@@ -648,7 +609,7 @@ async function handleSaveTempGreeting(selector) {
  */
 function isCurrentSwipeTemp() {
     const currentSwipeId = getCurrentSwipeId();
-    return tempGreetings.has(currentSwipeId);
+    return getTempGreetings().has(currentSwipeId);
 }
 
 /**
@@ -670,9 +631,7 @@ function removeGreetingSelector() {
  * Handles chat change event.
  */
 async function onChatChanged() {
-    // Clear temp greetings when chat changes
-    tempGreetings.clear();
-
+    // Temp greetings are already per-chat in chat_metadata, no need to clear
     // Small delay to ensure DOM is ready after chat switch
     setTimeout(() => injectGreetingSelector(), 50);
 }

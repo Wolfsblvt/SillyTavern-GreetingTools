@@ -1,14 +1,18 @@
-import { characters, menu_type, create_save, createOrEditCharacter, generateRaw, substituteParams, name1, name2 } from '../../../../script.js';
+import { characters, menu_type, create_save, createOrEditCharacter, generateRaw, substituteParams } from '../../../../script.js';
 import { renderExtensionTemplateAsync } from '../../../extensions.js';
 import { Popup, POPUP_TYPE, POPUP_RESULT } from '../../../popup.js';
 import { t } from '../../../i18n.js';
-import { debounce, escapeRegex, flashHighlight, getStringHash } from '../../../utils.js';
+import { debounce, flashHighlight, getStringHash } from '../../../utils.js';
 import { debounce_timeout } from '../../../constants.js';
 import { EXTENSION_NAME } from './index.js';
 import { generateGreetingId, getGreetingToolsData, saveGreetingToolsData, updateButtonAppearance } from './greeting-tools.js';
 import { loader } from '../../../action-loader.js';
 import { greetingToolsSettings } from './settings.js';
-import { showGenerateGreetingPopup, generateGreetingContent, generateTitleAndDescription, replaceNamesWithMacros } from './greeting-generator.js';
+import {
+    generateGreetingFlow,
+    getTempGreetings,
+    removeTempGreeting,
+} from './greeting-generator.js';
 
 /** @typedef {import('./greeting-tools.js').GreetingToolsData} GreetingToolsData */
 
@@ -48,6 +52,9 @@ export class GreetingToolsPopup {
 
     /** @type {GreetingEditorState | null} */
     #mainState = null;
+
+    /** @type {GreetingEditorState[]} Temporary greetings from chat (not yet saved to character) */
+    #tempStates = [];
 
     /** @type {() => Promise<void>} */
     #saveDebounced;
@@ -308,6 +315,20 @@ export class GreetingToolsPopup {
                 contentHash,
             });
         }
+
+        // Load temp greetings from chat metadata
+        this.#tempStates = [];
+        const tempGreetings = getTempGreetings();
+        for (const [swipeIndex, tempData] of tempGreetings) {
+            this.#tempStates.push({
+                id: tempData.id,
+                content: tempData.content,
+                title: tempData.title,
+                description: tempData.description,
+                contentHash: getStringHash(tempData.content),
+                swipeIndex, // Keep track of original swipe index
+            });
+        }
     }
 
     /**
@@ -384,7 +405,12 @@ export class GreetingToolsPopup {
         const countSpan = this.#template.querySelector('.greeting-tools-count');
         if (countSpan instanceof HTMLElement) {
             const altCount = this.#altStates.length;
-            countSpan.textContent = t`1 main greeting and ${altCount} alternate greeting${altCount !== 1 ? 's' : ''}`;
+            const tempCount = this.#tempStates.length;
+            let text = t`1 main greeting and ${altCount} alternate greeting${altCount !== 1 ? 's' : ''}`;
+            if (tempCount > 0) {
+                text += ` (+ ${tempCount} ${t`temp`})`;
+            }
+            countSpan.textContent = text;
         }
     }
 
@@ -712,6 +738,159 @@ export class GreetingToolsPopup {
     }
 
     /**
+     * Creates a temp greeting block element with special styling and save button.
+     * @param {GreetingEditorState & { swipeIndex?: number }} state
+     * @param {number} index
+     * @param {HTMLElement} list
+     * @returns {HTMLElement}
+     */
+    #createTempGreetingBlock(state, index, list) {
+        if (!this.#blockTemplate) {
+            throw new Error('Block template not loaded');
+        }
+
+        const block = /** @type {HTMLElement} */ (this.#blockTemplate.cloneNode(true));
+        block.dataset.greetingId = state.id;
+        block.dataset.tempGreeting = 'true';
+        block.classList.add('greeting-tools-temp-block');
+
+        // Apply toggle state
+        const details = block.querySelector('details');
+        if (details instanceof HTMLDetailsElement) {
+            details.open = this.#getToggleState(state.id) ?? true; // Default open for temp
+        }
+
+        // Set title with "(temp)" marker
+        const titleEl = block.querySelector('.greeting-tools-block-title');
+        if (titleEl instanceof HTMLElement) {
+            const displayTitle = state.title || t`Temporary Greeting`;
+            titleEl.innerHTML = `<span class="greeting-tools-temp-marker">(${t`temp`})</span> ${displayTitle}`;
+        }
+
+        // Set textarea content (read-only for temp greetings)
+        const textarea = block.querySelector('.greeting-tools-textarea');
+        if (textarea instanceof HTMLTextAreaElement) {
+            const textareaId = `greeting-textarea-temp-${state.id}`;
+            textarea.id = textareaId;
+            textarea.value = state.content;
+
+            // Link maximize button to textarea
+            const maximizeBtn = block.querySelector('.editor_maximize');
+            if (maximizeBtn) {
+                maximizeBtn.setAttribute('data-for', textareaId);
+            }
+        }
+
+        // Replace edit title button with save button
+        const editTitleBtn = block.querySelector('.greeting-tools-edit-title');
+        if (editTitleBtn instanceof HTMLElement) {
+            editTitleBtn.innerHTML = '<i class="fa-solid fa-save"></i>';
+            editTitleBtn.title = t`Save to alternates`;
+            editTitleBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                await this.#handleSaveTempGreeting(state, list);
+            });
+        }
+
+        // Hide auto-fill button for temp greetings
+        const autoFillBtn = block.querySelector('.greeting-tools-auto-fill');
+        if (autoFillBtn instanceof HTMLElement) {
+            autoFillBtn.style.display = 'none';
+        }
+
+        // Hide move buttons for temp greetings
+        const moveUpBtn = block.querySelector('.greeting-tools-move-up');
+        if (moveUpBtn instanceof HTMLElement) {
+            moveUpBtn.style.display = 'none';
+        }
+        const moveDownBtn = block.querySelector('.greeting-tools-move-down');
+        if (moveDownBtn instanceof HTMLElement) {
+            moveDownBtn.style.display = 'none';
+        }
+
+        // Delete button - removes the temp greeting
+        const deleteBtn = block.querySelector('.greeting-tools-delete');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                await this.#handleDeleteTempGreeting(state, list);
+            });
+        }
+
+        return block;
+    }
+
+    /**
+     * Handles saving a temp greeting to character alternates.
+     * @param {GreetingEditorState & { swipeIndex?: number }} state
+     * @param {HTMLElement} list
+     */
+    async #handleSaveTempGreeting(state, list) {
+        // Add to altStates
+        const newState = {
+            id: state.id,
+            content: state.content,
+            title: state.title,
+            description: state.description,
+            contentHash: state.contentHash,
+        };
+        this.#altStates.push(newState);
+
+        // Sync to character
+        this.#syncGreetingsToCharacter();
+        await this.#saveAllMetadata();
+
+        // Remove from temp states
+        const tempIndex = this.#tempStates.findIndex(s => s.id === state.id);
+        if (tempIndex !== -1) {
+            this.#tempStates.splice(tempIndex, 1);
+        }
+
+        // Remove from chat metadata
+        if (state.swipeIndex !== undefined) {
+            await removeTempGreeting(state.swipeIndex);
+        }
+
+        // Re-render
+        this.#renderGreetingsList(list);
+        this.#updateInfoLine();
+
+        toastr.success(t`Temporary greeting saved to alternates`);
+    }
+
+    /**
+     * Handles deleting a temp greeting.
+     * @param {GreetingEditorState & { swipeIndex?: number }} state
+     * @param {HTMLElement} list
+     */
+    async #handleDeleteTempGreeting(state, list) {
+        const confirm = await Popup.show.confirm(
+            t`Delete Temporary Greeting`,
+            t`Are you sure you want to delete this temporary greeting? This cannot be undone.`,
+        );
+        if (!confirm) return;
+
+        // Remove from temp states
+        const tempIndex = this.#tempStates.findIndex(s => s.id === state.id);
+        if (tempIndex !== -1) {
+            this.#tempStates.splice(tempIndex, 1);
+        }
+
+        // Remove from chat metadata
+        if (state.swipeIndex !== undefined) {
+            await removeTempGreeting(state.swipeIndex);
+        }
+
+        // Re-render
+        this.#renderGreetingsList(list);
+        this.#updateInfoLine();
+
+        toastr.info(t`Temporary greeting deleted`);
+    }
+
+    /**
      * Renders all greetings in the list.
      * @param {HTMLElement} list
      */
@@ -723,9 +902,15 @@ export class GreetingToolsPopup {
         const blocks = list.querySelectorAll('.greeting-tools-block:not(.greeting-tools-main-block)');
         blocks.forEach(block => block.remove());
 
-        // Render all greetings
+        // Render all saved greetings
         for (let i = 0; i < this.#altStates.length; i++) {
             const block = this.#createGreetingBlock(this.#altStates[i], i, list);
+            list.appendChild(block);
+        }
+
+        // Render temp greetings with special marker
+        for (let i = 0; i < this.#tempStates.length; i++) {
+            const block = this.#createTempGreetingBlock(this.#tempStates[i], i, list);
             list.appendChild(block);
         }
 
@@ -1303,100 +1488,54 @@ export class GreetingToolsPopup {
 
     /**
      * Shows the generate greeting popup and handles the generation flow.
+     * Uses the unified generateGreetingFlow for the generation logic.
      * @param {HTMLElement} list - The greeting list container
      */
     async #handleGenerateNewGreeting(list) {
-        // Show popup with text input for custom prompt (uses shared module)
-        const popupResult = await showGenerateGreetingPopup();
-
-        // User cancelled
-        if (popupResult === null) return;
-
-        const { prompt: customPrompt, generateTitleDesc } = popupResult;
-
-        /** @type {HTMLElement} New greeting block */
+        /** @type {HTMLElement | undefined} */
         let block;
-        /** @type {Set<JQuery<HTMLElement>>} A set of all temporary toasts */
-        let tempToasts = new Set();
 
-        // Show loader without info, just so we can wrap the two separate actions into one big blocking exectuion
-        const wrappingLoader = loader.show({ toastMode: loader.ToastMode.NONE });
+        // Use unified generation flow with callback for early UI update
+        const generated = await generateGreetingFlow({
+            existingTitles: this.#getAllExistingTitles(),
+        });
 
-        try {
-            // Generate the greeting content (uses shared module with custom existing titles)
-            const content = await generateGreetingContent(customPrompt, {
-                existingTitles: this.#getAllExistingTitles(),
-            });
-            if (!content) return;
+        if (!generated) return;
 
-            // Create new state with generated content
-            const newState = /** @type {GreetingEditorState} */ ({
-                id: generateGreetingId(),
-                content,
-                title: '',
-                description: '',
-                contentHash: getStringHash(content),
-            });
+        // Create new state with generated content
+        const newState = /** @type {GreetingEditorState} */ ({
+            id: generated.id,
+            content: generated.content,
+            title: generated.title,
+            description: generated.description,
+            contentHash: getStringHash(generated.content),
+        });
 
-            // Add to states and sync
-            this.#altStates.push(newState);
-            this.#syncGreetingsToCharacter();
-            this.#saveDebounced();
+        // Add to states and sync
+        this.#altStates.push(newState);
+        this.#syncGreetingsToCharacter();
+        this.#saveDebounced();
 
-            // Append the new block
-            block = this.#createGreetingBlock(newState, this.#altStates.length - 1, list);
-            list.appendChild(block);
+        // Append the new block
+        block = this.#createGreetingBlock(newState, this.#altStates.length - 1, list);
+        list.appendChild(block);
 
-            // Update UI states
-            this.#updateMoveButtonStates(list);
-            this.#updateHintVisibility(list);
-            this.#updateInfoLine();
+        // Update UI states
+        this.#updateMoveButtonStates(list);
+        this.#updateHintVisibility(list);
+        this.#updateInfoLine();
 
-            // Scroll to bottom to show new greeting
-            list.scrollTop = list.scrollHeight;
+        // Scroll to bottom to show new greeting
+        list.scrollTop = list.scrollHeight;
 
-            // Update button count
-            updateButtonAppearance(this.#chid);
+        // Update button count
+        updateButtonAppearance(this.#chid);
 
-            if (generateTitleDesc) {
-                // Show persistent success toast for content generation (stays visible during title/desc generation)
-                const successToast = toastr.success(t`Greeting content generated successfully`, '', {
-                    timeOut: 0,
-                    extendedTimeOut: 0,
-                    tapToDismiss: false,
-                });
-                tempToasts.add(successToast);
-
-                // Generate title and description with blocking loader (uses shared module)
-                const generated = await generateTitleAndDescription(newState.content, {
-                    existingTitles: this.#getAllExistingTitles(),
-                });
-
-                if (generated) {
-                    newState.title = generated.title;
-                    newState.description = generated.description;
-
-                    // Update the block's display
-                    this.#updateBlockTitle(block, newState, { index: this.#altStates.length - 1 });
-
-                    // We still do a debounced save, to prevent blocking. User should simply not reload this soon...
-                    this.#saveDebounced();
-
-                    toastr.success(t`New greeting created with title and description`);
-                } else {
-                    // Content was generated but title/description failed - still a partial success
-                    toastr.warning(t`Greeting created. Could not generate title/description - add them manually.`);
-                }
-            } else {
-                toastr.success(t`New greeting created`);
-            }
-        } finally {
-            // Clear all open temp toasts
-            for (const toast of tempToasts) {
-                toastr.clear(toast, { force: true });
-            }
-            tempToasts.clear();
-            await wrappingLoader.hide();
+        // Show success message
+        if (generated.title) {
+            toastr.success(t`New greeting created with title and description`);
+        } else {
+            toastr.success(t`New greeting created`);
         }
 
         // Focus the textarea

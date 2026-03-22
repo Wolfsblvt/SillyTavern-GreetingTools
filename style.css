@@ -263,3 +263,15 @@
     min-height: 80px;
     resize: vertical;
 }
+
+/* Temp greeting styles */
+.greeting-tools-temp-block {
+    border-left: 3px solid var(--SmartThemeQuoteColor, #f0ad4e);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor, #f0ad4e) 5%, transparent);
+}
+
+.greeting-tools-temp-marker {
+    color: var(--SmartThemeQuoteColor, #f0ad4e);
+    font-weight: bold;
+    font-size: 0.9em;
+}
