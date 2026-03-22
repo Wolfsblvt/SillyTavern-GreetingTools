@@ -3,8 +3,10 @@
  * These can be customized via extension settings.
  */
 
+import { translate } from '../../../i18n.js';
+
 /** System prompt template for greeting title/description generation */
-export const DEFAULT_GENERATE_SYSTEM_PROMPT = `You are helping organize greeting messages for a character named '{{char}}'.
+export const DEFAULT_GENERATE_SYSTEM_PROMPT = translate(`You are helping organize greeting messages for a character named '{{char}}'.
 
 Your task is to generate a short, memorable **title** and a brief **description** for the following greeting message.
 
@@ -44,10 +46,10 @@ You **MUST** respond with exactly this format, no other text:
 
 \`\`\`description
 [Your generated description here]
-\`\`\``;
+\`\`\``, 'DEFAULT_GENERATE_SYSTEM_PROMPT');
 
 /** System prompt template for generating new greeting content */
-export const DEFAULT_GENERATE_GREETING_SYSTEM_PROMPT = `You are writing a new opening greeting message for a roleplay character named '{{char}}'.
+export const DEFAULT_GENERATE_GREETING_SYSTEM_PROMPT = translate(`You are writing a new opening greeting message for a roleplay character named '{{char}}'.
 
 ## Your Task
 Write a compelling, immersive **first message** that establishes an interesting scenario or situation. This message should:
@@ -88,4 +90,12 @@ Make sure to incorporate this into the greeting while staying true to the charac
 {{/if}}
 ## Output Format
 Write ONLY the greeting message itself. Do not include titles, labels, explanations, or meta-commentary.
-Just write the actual greeting text that {{char}} would say/do to start a conversation or scene with {{user}}.`;
+Just write the actual greeting text that {{char}} would say/do to start a conversation or scene with {{user}}.`, 'DEFAULT_GENERATE_GREETING_SYSTEM_PROMPT');
+
+/** Default prompt sent to LLM when generating a greeting WITH a custom theme */
+export const DEFAULT_GENERATION_PROMPT_WITH_THEME = translate(`Generate a greeting for {{char}} with this theme:
+{{customPrompt}}`, 'DEFAULT_GENERATION_PROMPT_WITH_THEME');
+
+/** Default prompt sent to LLM when generating a greeting WITHOUT a custom theme */
+export const DEFAULT_GENERATION_PROMPT_WITHOUT_THEME = translate('Generate a new greeting for {{char}} that differs from existing greetings.',
+    'DEFAULT_GENERATION_PROMPT_WITHOUT_THEME');

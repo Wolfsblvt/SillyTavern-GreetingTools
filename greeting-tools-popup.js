@@ -1,6 +1,6 @@
 import { characters, menu_type, create_save, createOrEditCharacter, generateRaw, substituteParams, name1, name2 } from '../../../../script.js';
 import { renderExtensionTemplateAsync } from '../../../extensions.js';
-import { Popup, POPUP_TYPE, POPUP_RESULT, PopupUtils } from '../../../popup.js';
+import { Popup, POPUP_TYPE, POPUP_RESULT } from '../../../popup.js';
 import { t } from '../../../i18n.js';
 import { debounce, escapeRegex, flashHighlight, getStringHash } from '../../../utils.js';
 import { debounce_timeout } from '../../../constants.js';
@@ -1309,10 +1309,12 @@ export class GreetingToolsPopup {
      */
     async #handleGenerateNewGreeting(list) {
         // Show popup with text input for custom prompt
-        const customPrompt = await this.#showGenerateGreetingPromptPopup();
+        const popupResult = await this.#showGenerateGreetingPromptPopup();
 
         // User cancelled
-        if (customPrompt === null) return;
+        if (popupResult === null) return;
+
+        const { prompt: customPrompt, generateTitleDesc } = popupResult;
 
         /** @type {HTMLElement} New greeting block */
         let block;
@@ -1356,31 +1358,35 @@ export class GreetingToolsPopup {
             // Update button count
             updateButtonAppearance(this.#chid);
 
-            // Show persistent success toast for content generation (stays visible during title/desc generation)
-            const successToast = toastr.success(t`Greeting content generated successfully`, '', {
-                timeOut: 0,
-                extendedTimeOut: 0,
-                tapToDismiss: false,
-            });
-            tempToasts.add(successToast);
+            if (generateTitleDesc) {
+                // Show persistent success toast for content generation (stays visible during title/desc generation)
+                const successToast = toastr.success(t`Greeting content generated successfully`, '', {
+                    timeOut: 0,
+                    extendedTimeOut: 0,
+                    tapToDismiss: false,
+                });
+                tempToasts.add(successToast);
 
-            // Generate title and description with blocking loader (shows its own toast below the success toast)
-            const generated = await this.#generateTitleAndDescription(newState);
+                // Generate title and description with blocking loader (shows its own toast below the success toast)
+                const generated = await this.#generateTitleAndDescription(newState);
 
-            if (generated) {
-                newState.title = generated.title;
-                newState.description = generated.description;
+                if (generated) {
+                    newState.title = generated.title;
+                    newState.description = generated.description;
 
-                // Update the block's display
-                this.#updateBlockTitle(block, newState, { index: this.#altStates.length - 1 });
+                    // Update the block's display
+                    this.#updateBlockTitle(block, newState, { index: this.#altStates.length - 1 });
 
-                // We still do a debounced save, to prevent blocking. User should simply not reload this soon...
-                this.#saveDebounced();
+                    // We still do a debounced save, to prevent blocking. User should simply not reload this soon...
+                    this.#saveDebounced();
 
-                toastr.success(t`New greeting created with title and description`);
+                    toastr.success(t`New greeting created with title and description`);
+                } else {
+                    // Content was generated but title/description failed - still a partial success
+                    toastr.warning(t`Greeting created. Could not generate title/description - add them manually.`);
+                }
             } else {
-                // Content was generated but title/description failed - still a partial success
-                toastr.warning(t`Greeting created. Could not generate title/description - add them manually.`);
+                toastr.success(t`New greeting created`);
             }
         } finally {
             // Clear all open temp toasts
@@ -1399,23 +1405,46 @@ export class GreetingToolsPopup {
     }
     /**
      * Shows a popup for the user to enter a custom prompt for greeting generation.
-     * @returns {Promise<string | null>} The custom prompt text, empty string for default, or null if cancelled
+     * @returns {Promise<{ prompt: string, generateTitleDesc: boolean } | null>} The options or null if cancelled
      */
     async #showGenerateGreetingPromptPopup() {
-        const popupContent = PopupUtils.BuildTextWithHeader(
-            t`Generate Greeting`,
-            t`Scenario or prompt for the new greeting:`,
-        );
-        const popup = new Popup(popupContent, POPUP_TYPE.INPUT, '', {
+        // Build custom popup content with checkbox
+        const container = document.createElement('div');
+        container.classList.add('flex-container', 'flexFlowColumn', 'gap5');
+
+        const header = document.createElement('h3');
+        header.textContent = t`Generate Greeting`;
+        container.appendChild(header);
+
+        const description = document.createElement('p');
+        description.textContent = t`Scenario or prompt for the new greeting:`;
+        container.appendChild(description);
+
+        const popup = new Popup(container, POPUP_TYPE.INPUT, '', {
             large: false,
             rows: 7,
             placeholder: GreetingToolsPopup.#GENERATE_GREETING_PLACEHOLDER,
             okButton: t`Generate`,
             cancelButton: t`Cancel`,
+            customInputs: [
+                {
+                    type: 'checkbox',
+                    id: 'greeting_gen_title_desc',
+                    defaultState: true,
+                    label: t`Also generate title and description`,
+                },
+            ],
         });
 
         const result = await popup.show();
-        return typeof result === 'string' ? result.trim() : null;
+        if (typeof result !== 'string') return null;
+
+        const generateTitleDesc = popup.inputResults.get('greeting_gen_title_desc');
+
+        return {
+            prompt: result.trim(),
+            generateTitleDesc: generateTitleDesc === true,
+        };
     }
 
     /**
@@ -1434,10 +1463,11 @@ export class GreetingToolsPopup {
         // Substitute macros in system prompt (uses customizable prompt from settings)
         const systemPrompt = substituteParams(greetingToolsSettings.generateGreetingSystemPrompt, undefined, undefined, dynamicMacros);
 
-        // The prompt to the LLM is minimal - system prompt has all context
-        const prompt = customPrompt
-            ? t`Generate a greeting for {{char}} with this theme:\n${customPrompt}`
-            : t`Generate a new greeting for {{char}} that differs from existing greetings.`;
+        // Use configurable prompts from settings
+        const promptTemplate = customPrompt
+            ? greetingToolsSettings.generationPromptWithTheme
+            : greetingToolsSettings.generationPromptWithoutTheme;
+        const prompt = substituteParams(promptTemplate, undefined, undefined, dynamicMacros);
 
         const greetingLoader = loader.show({
             message: t`Generating new greeting...`,

@@ -7,7 +7,7 @@ import { saveSettingsDebounced } from '../../../../script.js';
 import { extension_settings, renderExtensionTemplateAsync } from '../../../extensions.js';
 import { t } from '../../../i18n.js';
 import { EXTENSION_KEY, EXTENSION_NAME } from './index.js';
-import { DEFAULT_GENERATE_SYSTEM_PROMPT, DEFAULT_GENERATE_GREETING_SYSTEM_PROMPT } from './prompts.js';
+import { DEFAULT_GENERATE_SYSTEM_PROMPT, DEFAULT_GENERATE_GREETING_SYSTEM_PROMPT, DEFAULT_GENERATION_PROMPT_WITH_THEME, DEFAULT_GENERATION_PROMPT_WITHOUT_THEME } from './prompts.js';
 
 /** @readonly Default settings values */
 const defaultSettings = {
@@ -15,6 +15,8 @@ const defaultSettings = {
     replaceNamesWithMacros: true,
     generateSystemPrompt: DEFAULT_GENERATE_SYSTEM_PROMPT,
     generateGreetingSystemPrompt: DEFAULT_GENERATE_GREETING_SYSTEM_PROMPT,
+    generationPromptWithTheme: DEFAULT_GENERATION_PROMPT_WITH_THEME,
+    generationPromptWithoutTheme: DEFAULT_GENERATION_PROMPT_WITHOUT_THEME,
 };
 
 let uiInjected = false;
@@ -53,6 +55,12 @@ export const greetingToolsSettings = {
     get generateGreetingSystemPrompt() {
         return ensureSettings().generateGreetingSystemPrompt || DEFAULT_GENERATE_GREETING_SYSTEM_PROMPT;
     },
+    get generationPromptWithTheme() {
+        return ensureSettings().generationPromptWithTheme || DEFAULT_GENERATION_PROMPT_WITH_THEME;
+    },
+    get generationPromptWithoutTheme() {
+        return ensureSettings().generationPromptWithoutTheme || DEFAULT_GENERATION_PROMPT_WITHOUT_THEME;
+    },
 };
 
 /**
@@ -79,6 +87,16 @@ function applySettingsToUI() {
     const greetingPromptTextarea = document.getElementById('greeting_tools_greeting_prompt');
     if (greetingPromptTextarea instanceof HTMLTextAreaElement) {
         greetingPromptTextarea.value = settings.generateGreetingSystemPrompt;
+    }
+
+    const promptWithThemeTextarea = document.getElementById('greeting_tools_prompt_with_theme');
+    if (promptWithThemeTextarea instanceof HTMLTextAreaElement) {
+        promptWithThemeTextarea.value = settings.generationPromptWithTheme;
+    }
+
+    const promptWithoutThemeTextarea = document.getElementById('greeting_tools_prompt_without_theme');
+    if (promptWithoutThemeTextarea instanceof HTMLTextAreaElement) {
+        promptWithoutThemeTextarea.value = settings.generationPromptWithoutTheme;
     }
 }
 
@@ -132,6 +150,40 @@ function registerSettingsEventListeners() {
         const textarea = document.getElementById('greeting_tools_greeting_prompt');
         if (textarea instanceof HTMLTextAreaElement) {
             textarea.value = DEFAULT_GENERATE_GREETING_SYSTEM_PROMPT;
+        }
+        toastr.success(t`Prompt restored to default`);
+    });
+
+    document.getElementById('greeting_tools_prompt_with_theme')?.addEventListener('input', (e) => {
+        if (e.target instanceof HTMLTextAreaElement) {
+            settings.generationPromptWithTheme = e.target.value;
+            saveSettingsDebounced();
+        }
+    });
+
+    document.getElementById('greeting_tools_reset_prompt_with_theme')?.addEventListener('click', () => {
+        settings.generationPromptWithTheme = DEFAULT_GENERATION_PROMPT_WITH_THEME;
+        saveSettingsDebounced();
+        const textarea = document.getElementById('greeting_tools_prompt_with_theme');
+        if (textarea instanceof HTMLTextAreaElement) {
+            textarea.value = DEFAULT_GENERATION_PROMPT_WITH_THEME;
+        }
+        toastr.success(t`Prompt restored to default`);
+    });
+
+    document.getElementById('greeting_tools_prompt_without_theme')?.addEventListener('input', (e) => {
+        if (e.target instanceof HTMLTextAreaElement) {
+            settings.generationPromptWithoutTheme = e.target.value;
+            saveSettingsDebounced();
+        }
+    });
+
+    document.getElementById('greeting_tools_reset_prompt_without_theme')?.addEventListener('click', () => {
+        settings.generationPromptWithoutTheme = DEFAULT_GENERATION_PROMPT_WITHOUT_THEME;
+        saveSettingsDebounced();
+        const textarea = document.getElementById('greeting_tools_prompt_without_theme');
+        if (textarea instanceof HTMLTextAreaElement) {
+            textarea.value = DEFAULT_GENERATION_PROMPT_WITHOUT_THEME;
         }
         toastr.success(t`Prompt restored to default`);
     });
