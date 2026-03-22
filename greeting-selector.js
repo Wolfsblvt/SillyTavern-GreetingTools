@@ -20,6 +20,7 @@ import {
  * @property {string} title - Display title (from metadata or default)
  * @property {string} description - Description (from metadata or empty)
  * @property {string} id - Unique greeting ID (from metadata or generated)
+ * @property {boolean} [isTemp] - Whether this is a temporary greeting
  */
 
 /** @type {HTMLElement | null} */
@@ -27,6 +28,9 @@ let selectorTemplate = null;
 
 /** @type {GreetingOption[]} */
 let cachedOptions = [];
+
+/** @type {boolean} Flag to prevent concurrent injection attempts */
+let isInjecting = false;
 
 /**
  * Checks if the first message is a character greeting that we can display info for.
@@ -151,9 +155,11 @@ function createOptionHtml(option) {
         ? `<div class="greeting-selector-option-desc">${escapeHtml(option.description)}</div>`
         : `<div class="greeting-selector-option-preview">${escapeHtml(getContentPreview(option.content))}</div>`;
 
+    const tempMarker = option.isTemp ? '<span class="greeting-tools-temp-marker">TEMP</span>' : '';
+
     return `
         <div class="greeting-selector-option">
-            <div class="greeting-selector-option-title">${escapeHtml(option.title)}</div>
+            <div class="greeting-selector-option-title">${tempMarker}${escapeHtml(option.title)}</div>
             ${descHtml}
         </div>
     `;
@@ -224,11 +230,15 @@ function updateSelectorUI(selector, { rebuildDropdown = false } = {}) {
     const isTempGreeting = tempGreetings.has(currentIndex);
     const tempData = tempGreetings.get(currentIndex);
 
-    // Update title display (use temp data if available)
+    // Update title display (use temp data if available, with TEMP marker for temp greetings)
     const titleEl = selector.querySelector('.greeting-selector-title-display');
     if (titleEl) {
         const title = isTempGreeting ? tempData?.title : currentOption?.title;
-        titleEl.textContent = title || t`Greeting`;
+        if (isTempGreeting) {
+            titleEl.innerHTML = `<span class="greeting-tools-temp-marker">TEMP</span>${title || t`Temporary Greeting`}`;
+        } else {
+            titleEl.textContent = title || t`Greeting`;
+        }
     }
 
     // Update description (use temp data if available)
@@ -265,9 +275,10 @@ function updateSelectorUI(selector, { rebuildDropdown = false } = {}) {
         allOptions.push({
             swipeIndex,
             content: tempData.content,
-            title: `${tempData.title} (${t`temp`})`,
+            title: tempData.title || t`Temporary Greeting`,
             description: tempData.description,
             id: tempData.id,
+            isTemp: true,
         });
     }
     // Sort by swipe index
@@ -364,7 +375,15 @@ async function injectGreetingSelector() {
         return;
     }
 
-    // Check if selector already exists
+    // Check if selector already exists (use querySelectorAll to detect duplicates)
+    const existingSelectors = firstMessageEl.querySelectorAll('.greeting-selector');
+    if (existingSelectors.length > 1) {
+        // Remove duplicates, keep only the first one
+        for (let i = 1; i < existingSelectors.length; i++) {
+            existingSelectors[i].remove();
+        }
+    }
+
     let selector = /** @type {HTMLElement|null} */ (firstMessageEl.querySelector('.greeting-selector'));
     if (selector) {
         // Update existing selector
@@ -372,43 +391,58 @@ async function injectGreetingSelector() {
         return;
     }
 
-    // Load template if needed
-    if (!selectorTemplate) {
-        const html = await renderExtensionTemplateAsync(`third-party/${EXTENSION_NAME}`, 'templates/greeting-selector');
-        const container = document.createElement('div');
-        container.innerHTML = html;
-        selectorTemplate = /** @type {HTMLElement} */ (container.firstElementChild);
-    }
-
-    if (!selectorTemplate) {
-        console.error('[GreetingTools] Failed to load greeting selector template');
+    // Prevent concurrent injection attempts (race condition guard)
+    if (isInjecting) {
         return;
     }
+    isInjecting = true;
 
-    // Clone and inject
-    selector = /** @type {HTMLElement} */ (selectorTemplate.cloneNode(true));
-
-    // Find injection point: after .ch_name, before .mes_reasoning_details or .mes_text
-    const mesBlock = firstMessageEl.querySelector('.mes_block');
-    const chName = mesBlock?.querySelector('.ch_name');
-    const reasoningDetails = mesBlock?.querySelector('.mes_reasoning_details');
-    const mesText = mesBlock?.querySelector('.mes_text');
-
-    if (mesBlock && chName) {
-        // Insert after ch_name
-        if (reasoningDetails) {
-            mesBlock.insertBefore(selector, reasoningDetails);
-        } else if (mesText) {
-            mesBlock.insertBefore(selector, mesText);
-        } else {
-            chName.after(selector);
+    try {
+        // Load template if needed
+        if (!selectorTemplate) {
+            const html = await renderExtensionTemplateAsync(`third-party/${EXTENSION_NAME}`, 'templates/greeting-selector');
+            const container = document.createElement('div');
+            container.innerHTML = html;
+            selectorTemplate = /** @type {HTMLElement} */ (container.firstElementChild);
         }
 
-        // Setup event handlers
-        setupSelectorEventHandlers(selector);
+        if (!selectorTemplate) {
+            console.error('[GreetingTools] Failed to load greeting selector template');
+            return;
+        }
 
-        // Update UI
-        updateSelectorUI(selector);
+        // Double-check no selector was added while we were loading template
+        if (firstMessageEl.querySelector('.greeting-selector')) {
+            return;
+        }
+
+        // Clone and inject
+        selector = /** @type {HTMLElement} */ (selectorTemplate.cloneNode(true));
+
+        // Find injection point: after .ch_name, before .mes_reasoning_details or .mes_text
+        const mesBlock = firstMessageEl.querySelector('.mes_block');
+        const chName = mesBlock?.querySelector('.ch_name');
+        const reasoningDetails = mesBlock?.querySelector('.mes_reasoning_details');
+        const mesText = mesBlock?.querySelector('.mes_text');
+
+        if (mesBlock && chName) {
+            // Insert after ch_name
+            if (reasoningDetails) {
+                mesBlock.insertBefore(selector, reasoningDetails);
+            } else if (mesText) {
+                mesBlock.insertBefore(selector, mesText);
+            } else {
+                chName.after(selector);
+            }
+
+            // Setup event handlers
+            setupSelectorEventHandlers(selector);
+
+            // Update UI
+            updateSelectorUI(selector);
+        }
+    } finally {
+        isInjecting = false;
     }
 }
 

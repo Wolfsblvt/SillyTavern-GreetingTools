@@ -131,6 +131,7 @@ export class GreetingToolsPopup {
             wide: true,
             large: true,
             allowVerticalScrolling: true,
+            allowEscapeClose: true,
             onClose: async () => {
                 await this.#onClose();
             },
@@ -426,9 +427,9 @@ export class GreetingToolsPopup {
                 titleSpan.textContent = state.title || t`Main Greeting`;
                 indexSpan.textContent = '';
             } else if (isTemp) {
-                // Temp greetings: show (temp) marker with title or fallback
+                // Temp greetings: show TEMP tag with title or fallback
                 const displayTitle = state.title || t`Temporary Greeting`;
-                titleSpan.innerHTML = `<span class="greeting-tools-temp-marker">(${t`temp`})</span> ${displayTitle}`;
+                titleSpan.innerHTML = `<span class="greeting-tools-temp-marker">TEMP</span>${displayTitle}`;
                 indexSpan.textContent = '';
             } else {
                 const displayIndex = index + 1;

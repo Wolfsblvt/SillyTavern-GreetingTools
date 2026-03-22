@@ -6,6 +6,11 @@
     opacity: 0.5;
 }
 
+/* Block styling */
+.greeting-tools-block {
+    padding: 0 5px;
+}
+
 /* Gap between greeting title and index */
 .greeting-tools-block .greeting_index {
     margin-left: 5px;
@@ -271,7 +276,16 @@
 }
 
 .greeting-tools-temp-marker {
+    display: inline-block;
+    padding: 1px 6px;
+    margin-right: 6px;
+    font-size: 0.75em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
     color: var(--SmartThemeQuoteColor, #f0ad4e);
-    font-weight: bold;
-    font-size: 0.9em;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor, #f0ad4e) 20%, transparent);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor, #f0ad4e) 50%, transparent);
+    border-radius: 4px;
+    vertical-align: middle;
 }
