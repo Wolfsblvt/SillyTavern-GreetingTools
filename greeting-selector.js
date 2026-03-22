@@ -244,9 +244,6 @@ function updateSelectorUI(selector, { rebuildDropdown = false } = {}) {
     const isTempGreeting = tempGreetings.has(currentIndex);
     const tempData = tempGreetings.get(currentIndex);
 
-    // Cache options for fuzzy search
-    cachedOptions = options;
-
     // Update title display (use temp data if available)
     const titleEl = selector.querySelector('.greeting-selector-title-display');
     if (titleEl) {
@@ -282,6 +279,23 @@ function updateSelectorUI(selector, { rebuildDropdown = false } = {}) {
         saveTempBtn.classList.toggle('displayNone', !isTempGreeting);
     }
 
+    // Build combined options (saved + temp greetings)
+    const allOptions = [...options];
+    for (const [swipeIndex, tempData] of tempGreetings) {
+        allOptions.push({
+            swipeIndex,
+            content: tempData.content,
+            title: `${tempData.title} (${t`temp`})`,
+            description: tempData.description,
+            id: tempData.id,
+        });
+    }
+    // Sort by swipe index
+    allOptions.sort((a, b) => a.swipeIndex - b.swipeIndex);
+
+    // Cache all options for fuzzy search
+    cachedOptions = allOptions;
+
     // Setup dropdown if changeable
     if (isChangeable) {
         const dropdown = selector.querySelector('.greeting-selector-dropdown');
@@ -292,7 +306,7 @@ function updateSelectorUI(selector, { rebuildDropdown = false } = {}) {
             // Rebuild options if needed
             if (needsInit || rebuildDropdown) {
                 dropdown.innerHTML = '';
-                for (const opt of options) {
+                for (const opt of allOptions) {
                     const optionEl = document.createElement('option');
                     optionEl.value = String(opt.swipeIndex);
                     optionEl.textContent = opt.title;
@@ -321,7 +335,7 @@ function updateSelectorUI(selector, { rebuildDropdown = false } = {}) {
                     },
                     templateResult: (state) => {
                         if (!state.id) return state.text;
-                        const opt = options.find(o => o.swipeIndex === Number(state.id));
+                        const opt = cachedOptions.find(o => o.swipeIndex === Number(state.id));
                         if (!opt) return state.text;
                         const html = createOptionHtml(opt);
                         const wrapper = document.createElement('div');
@@ -472,14 +486,17 @@ function setupSelectorEventHandlers(selector) {
  * @param {HTMLElement} selector
  */
 async function handleGenerateTempGreeting(selector) {
-    // Show popup with text input for custom prompt
-    const popupResult = await showGenerateGreetingPopup();
+    // Show popup with text input for custom prompt (with "temporary" in title)
+    const popupResult = await showGenerateGreetingPopup({ title: t`Generate Temporary Greeting` });
     if (popupResult === null) return;
 
     const { prompt: customPrompt, generateTitleDesc } = popupResult;
 
     // Show wrapping loader
     const wrappingLoader = loader.show({ toastMode: loader.ToastMode.NONE });
+
+    /** @type {Set<JQuery<HTMLElement>>} A set of all temporary toasts */
+    const tempToasts = new Set();
 
     try {
         // Generate the greeting content
@@ -493,6 +510,14 @@ async function handleGenerateTempGreeting(selector) {
         let description = '';
 
         if (generateTitleDesc) {
+            // Show persistent success toast for content generation (stays visible during title/desc generation)
+            const successToast = toastr.success(t`Greeting content generated`, '', {
+                timeOut: 0,
+                extendedTimeOut: 0,
+                tapToDismiss: false,
+            });
+            tempToasts.add(successToast);
+
             const generated = await generateTitleAndDescription(content);
             if (generated) {
                 title = generated.title;
@@ -543,6 +568,11 @@ async function handleGenerateTempGreeting(selector) {
         console.error('[GreetingTools] Failed to generate temp greeting:', error);
         toastr.error(t`Failed to generate greeting`);
     } finally {
+        // Clear all temp toasts
+        for (const toast of tempToasts) {
+            toastr.clear(toast, { force: true });
+        }
+        tempToasts.clear();
         await wrappingLoader.hide();
     }
 }
@@ -593,7 +623,7 @@ async function handleSaveTempGreeting(selector) {
     metadata.indexMap[newIndex] = tempData.id;
 
     // Save metadata
-    saveGreetingToolsData(this_chid, metadata);
+    saveGreetingToolsData(metadata, { chid: this_chid });
 
     // Remove from temp tracking
     tempGreetings.delete(currentSwipeId);

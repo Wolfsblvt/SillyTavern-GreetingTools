@@ -22,15 +22,17 @@ const GENERATE_GREETING_PLACEHOLDER = t`Describe what kind of greeting scenario 
 
 /**
  * Shows a popup for the user to enter a custom prompt for greeting generation.
+ * @param {object} [options] - Popup options
+ * @param {string} [options.title] - Custom title for the popup (default: "Generate Greeting")
  * @returns {Promise<GeneratePopupResult | null>} The options or null if cancelled
  */
-export async function showGenerateGreetingPopup() {
+export async function showGenerateGreetingPopup({ title: popupTitle } = {}) {
     // Build custom popup content with checkbox
     const container = document.createElement('div');
     container.classList.add('flex-container', 'flexFlowColumn', 'gap5');
 
     const header = document.createElement('h3');
-    header.textContent = t`Generate Greeting`;
+    header.textContent = popupTitle || t`Generate Greeting`;
     container.appendChild(header);
 
     const description = document.createElement('p');
@@ -95,7 +97,7 @@ export function replaceNamesWithMacros(text) {
 
 /**
  * Collects all existing greeting titles for context.
- * @param {number} [chid] - Character ID (defaults to this_chid)
+ * @param {string} [chid] - Character ID (defaults to this_chid)
  * @returns {string} Formatted list of existing titles, or empty string
  */
 export function getAllExistingTitles(chid = this_chid) {
@@ -121,11 +123,12 @@ export function getAllExistingTitles(chid = this_chid) {
  * @param {string} customPrompt - Optional custom prompt from user
  * @param {object} [options] - Generation options
  * @param {string} [options.loaderMessage] - Custom loader message
+ * @param {string} [options.existingTitles] - Pre-computed existing titles (if not provided, fetched from metadata)
  * @returns {Promise<string | null>} Generated greeting content or null on failure
  */
-export async function generateGreetingContent(customPrompt, { loaderMessage } = {}) {
+export async function generateGreetingContent(customPrompt, { loaderMessage, existingTitles: providedTitles } = {}) {
     // Build dynamic macros
-    const existingTitles = getAllExistingTitles();
+    const existingTitles = providedTitles ?? getAllExistingTitles();
     const dynamicMacros = {
         existingTitles,
         customPrompt: customPrompt || '',

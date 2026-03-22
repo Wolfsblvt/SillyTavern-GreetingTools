@@ -130,7 +130,7 @@
     max-width: 350px;
 }
 
-/* When selecting: hide title and select button, show dropdown */
+/* When selecting: hide title, show dropdown, disable select button */
 .greeting-selector-selecting .greeting-selector-title-display {
     display: none;
 }
@@ -140,7 +140,9 @@
 }
 
 .greeting-selector-selecting .greeting-selector-select-btn {
-    display: none;
+    opacity: 0.5;
+    pointer-events: none;
+    cursor: not-allowed;
 }
 
 .greeting-selector-description {

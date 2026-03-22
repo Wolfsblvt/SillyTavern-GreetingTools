@@ -8,6 +8,7 @@ import { EXTENSION_NAME } from './index.js';
 import { generateGreetingId, getGreetingToolsData, saveGreetingToolsData, updateButtonAppearance } from './greeting-tools.js';
 import { loader } from '../../../action-loader.js';
 import { greetingToolsSettings } from './settings.js';
+import { showGenerateGreetingPopup, generateGreetingContent, generateTitleAndDescription, replaceNamesWithMacros } from './greeting-generator.js';
 
 /** @typedef {import('./greeting-tools.js').GreetingToolsData} GreetingToolsData */
 
@@ -1283,9 +1284,6 @@ export class GreetingToolsPopup {
     // Generate New Greeting
     // ─────────────────────────────────────────────────────────────────────────
 
-    /** Default placeholder text for the generate greeting popup */
-    static #GENERATE_GREETING_PLACEHOLDER = t`Describe what kind of greeting scenario you want to generate. Leave empty for a general new greeting based on the character.`;
-
     /**
      * Collects all existing greeting titles for context.
      * @returns {string} Formatted list of existing titles, or empty string
@@ -1308,8 +1306,8 @@ export class GreetingToolsPopup {
      * @param {HTMLElement} list - The greeting list container
      */
     async #handleGenerateNewGreeting(list) {
-        // Show popup with text input for custom prompt
-        const popupResult = await this.#showGenerateGreetingPromptPopup();
+        // Show popup with text input for custom prompt (uses shared module)
+        const popupResult = await showGenerateGreetingPopup();
 
         // User cancelled
         if (popupResult === null) return;
@@ -1325,8 +1323,10 @@ export class GreetingToolsPopup {
         const wrappingLoader = loader.show({ toastMode: loader.ToastMode.NONE });
 
         try {
-            // Generate the greeting content
-            const content = await this.#generateGreetingContent(customPrompt);
+            // Generate the greeting content (uses shared module with custom existing titles)
+            const content = await generateGreetingContent(customPrompt, {
+                existingTitles: this.#getAllExistingTitles(),
+            });
             if (!content) return;
 
             // Create new state with generated content
@@ -1367,8 +1367,10 @@ export class GreetingToolsPopup {
                 });
                 tempToasts.add(successToast);
 
-                // Generate title and description with blocking loader (shows its own toast below the success toast)
-                const generated = await this.#generateTitleAndDescription(newState);
+                // Generate title and description with blocking loader (uses shared module)
+                const generated = await generateTitleAndDescription(newState.content, {
+                    existingTitles: this.#getAllExistingTitles(),
+                });
 
                 if (generated) {
                     newState.title = generated.title;
@@ -1402,152 +1404,6 @@ export class GreetingToolsPopup {
         if (textarea instanceof HTMLTextAreaElement) {
             textarea.focus();
         }
-    }
-    /**
-     * Shows a popup for the user to enter a custom prompt for greeting generation.
-     * @returns {Promise<{ prompt: string, generateTitleDesc: boolean } | null>} The options or null if cancelled
-     */
-    async #showGenerateGreetingPromptPopup() {
-        // Build custom popup content with checkbox
-        const container = document.createElement('div');
-        container.classList.add('flex-container', 'flexFlowColumn', 'gap5');
-
-        const header = document.createElement('h3');
-        header.textContent = t`Generate Greeting`;
-        container.appendChild(header);
-
-        const description = document.createElement('p');
-        description.textContent = t`Scenario or prompt for the new greeting:`;
-        container.appendChild(description);
-
-        const popup = new Popup(container, POPUP_TYPE.INPUT, '', {
-            large: false,
-            rows: 7,
-            placeholder: GreetingToolsPopup.#GENERATE_GREETING_PLACEHOLDER,
-            okButton: t`Generate`,
-            cancelButton: t`Cancel`,
-            customInputs: [
-                {
-                    type: 'checkbox',
-                    id: 'greeting_gen_title_desc',
-                    defaultState: true,
-                    label: t`Also generate title and description`,
-                },
-            ],
-        });
-
-        const result = await popup.show();
-        if (typeof result !== 'string') return null;
-
-        const generateTitleDesc = popup.inputResults.get('greeting_gen_title_desc');
-
-        return {
-            prompt: result.trim(),
-            generateTitleDesc: generateTitleDesc === true,
-        };
-    }
-
-    /**
-     * Generates greeting content using LLM.
-     * @param {string} customPrompt - Optional custom prompt from user
-     * @returns {Promise<string | null>} Generated greeting content or null on failure
-     */
-    async #generateGreetingContent(customPrompt) {
-        // Build dynamic macros
-        const existingTitles = this.#getAllExistingTitles();
-        const dynamicMacros = {
-            existingTitles,
-            customPrompt: customPrompt || '',
-        };
-
-        // Substitute macros in system prompt (uses customizable prompt from settings)
-        const systemPrompt = substituteParams(greetingToolsSettings.generateGreetingSystemPrompt, undefined, undefined, dynamicMacros);
-
-        // Use configurable prompts from settings
-        const promptTemplate = customPrompt
-            ? greetingToolsSettings.generationPromptWithTheme
-            : greetingToolsSettings.generationPromptWithoutTheme;
-        const prompt = substituteParams(promptTemplate, undefined, undefined, dynamicMacros);
-
-        const greetingLoader = loader.show({
-            message: t`Generating new greeting...`,
-        });
-
-        try {
-            const response = await generateRaw({
-                prompt,
-                systemPrompt,
-                instructOverride: true,
-            });
-
-            console.info('[GreetingTools] Generated greeting content', { text: response });
-
-            if (!response || typeof response !== 'string') {
-                toastr.error(t`No response from LLM`);
-                return null;
-            }
-
-            // Clean up the response - remove any leading/trailing whitespace
-            let content = response.trim();
-
-            if (!content) {
-                toastr.error(t`Generated content is empty`);
-                return null;
-            }
-
-            // Replace character/user names with macros if setting is enabled
-            if (greetingToolsSettings.replaceNamesWithMacros) {
-                content = this.#replaceNamesWithMacros(content);
-            }
-
-            return content;
-        } catch (error) {
-            // Don't show error toast for intentional user aborts
-            const isAborted = error?.name === 'AbortError' || error?.message?.includes('Cancelled');
-            if (isAborted) {
-                console.log('[GreetingTools] Greeting generation was cancelled by user');
-            } else {
-                console.error('[GreetingTools] Greeting generation error:', error);
-                toastr.error(t`Generation failed: ${error.message}`);
-            }
-            return null;
-        } finally {
-            await greetingLoader.hide();
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Name Replacement Utility
-    // ─────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Replaces character and user names with {{char}} and {{user}} macros.
-     * @param {string} content - The content to process
-     * @returns {string} Content with names replaced by macros
-     */
-    #replaceNamesWithMacros(content) {
-        if (!content) return content;
-
-        // Get character name (name2 is the current character name)
-        const charName = this.#character?.name || name2;
-        // Get user name (name1 is the current user/persona name)
-        const userName = name1;
-
-        let result = content;
-
-        // Replace character name with {{char}} (case-insensitive, word boundary)
-        if (charName) {
-            const charRegex = new RegExp(`\\b${escapeRegex(charName)}\\b`, 'gi');
-            result = result.replace(charRegex, '{{char}}');
-        }
-
-        // Replace user name with {{user}} (case-insensitive, word boundary)
-        if (userName) {
-            const userRegex = new RegExp(`\\b${escapeRegex(userName)}\\b`, 'gi');
-            result = result.replace(userRegex, '{{user}}');
-        }
-
-        return result;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
