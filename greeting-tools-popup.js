@@ -1,4 +1,5 @@
-import { characters, menu_type, create_save, createOrEditCharacter, generateRaw, substituteParams } from '../../../../script.js';
+import { characters, menu_type, create_save, createOrEditCharacter, generateRaw, substituteParams, chat, swipe } from '../../../../script.js';
+import { SWIPE_DIRECTION } from '../../../constants.js';
 import { renderExtensionTemplateAsync } from '../../../extensions.js';
 import { Popup, POPUP_TYPE, POPUP_RESULT } from '../../../popup.js';
 import { t } from '../../../i18n.js';
@@ -410,9 +411,12 @@ export class GreetingToolsPopup {
      * Updates the title and description display for a greeting block.
      * @param {HTMLElement} block
      * @param {GreetingEditorState} state
-     * @param {{ index?: number, isMain?: boolean }} [options={}]
+     * @param {object} [options={}]
+     * @param {number} [options.index=-1] - Index for alternate greetings
+     * @param {boolean} [options.isMain=false] - Whether this is a main greeting
+     * @param {boolean} [options.isTemp=false] - Whether this is a temporary greeting
      */
-    #updateBlockTitle(block, state, { index = -1, isMain = false } = {}) {
+    #updateBlockTitle(block, state, { index = -1, isMain = false, isTemp = false } = {}) {
         const titleSpan = block.querySelector('.greeting-tools-title');
         const indexSpan = block.querySelector('.greeting_index');
         const descSpan = block.querySelector('.greeting-tools-description');
@@ -420,6 +424,11 @@ export class GreetingToolsPopup {
         if (titleSpan instanceof HTMLElement && indexSpan instanceof HTMLElement) {
             if (isMain) {
                 titleSpan.textContent = state.title || t`Main Greeting`;
+                indexSpan.textContent = '';
+            } else if (isTemp) {
+                // Temp greetings: show (temp) marker with title or fallback
+                const displayTitle = state.title || t`Temporary Greeting`;
+                titleSpan.innerHTML = `<span class="greeting-tools-temp-marker">(${t`temp`})</span> ${displayTitle}`;
                 indexSpan.textContent = '';
             } else {
                 const displayIndex = index + 1;
@@ -642,11 +651,7 @@ export class GreetingToolsPopup {
 
         // Set title (with temp marker if applicable)
         if (isTemp) {
-            const titleEl = block.querySelector('.greeting-tools-block-title');
-            if (titleEl instanceof HTMLElement) {
-                const displayTitle = state.title || t`Temporary Greeting`;
-                titleEl.innerHTML = `<span class="greeting-tools-temp-marker">(${t`temp`})</span> ${displayTitle}`;
-            }
+            this.#updateBlockTitle(block, state, { index, isTemp: true });
         } else {
             this.#updateBlockTitle(block, state, { index });
         }
@@ -1499,6 +1504,7 @@ export class GreetingToolsPopup {
 
     /**
      * Handles popup close - saves data and triggers character save.
+     * Preserves temp greetings and restores swipe position after re-render.
      */
     async #onClose() {
         // Save metadata on close
@@ -1506,7 +1512,55 @@ export class GreetingToolsPopup {
 
         // Save character if not in create mode
         if (menu_type !== 'create') {
+            // Capture current swipe index before save (to restore after re-render)
+            const currentSwipeIndex = chat?.[0]?.swipe_id ?? 0;
+
+            // Get temp greetings data to re-inject after re-render
+            const tempGreetings = getTempGreetings();
+            const hasTempGreetings = tempGreetings.size > 0;
+
             await createOrEditCharacter();
+
+            // Re-inject temp greetings into first message swipes after re-render
+            if (hasTempGreetings && chat?.[0]) {
+                const firstMessage = chat[0];
+
+                // Ensure swipes array exists
+                if (!Array.isArray(firstMessage.swipes)) {
+                    firstMessage.swipes = [firstMessage.mes];
+                    firstMessage.swipe_id = 0;
+                    firstMessage.swipe_info = [{}];
+                }
+
+                // Re-add temp greeting swipes at their original indices
+                for (const [swipeIndex, tempData] of tempGreetings) {
+                    // Only add if the swipe index is beyond current swipes (temp greetings)
+                    while (firstMessage.swipes.length <= swipeIndex) {
+                        firstMessage.swipes.push('');
+                        firstMessage.swipe_info.push({});
+                    }
+                    firstMessage.swipes[swipeIndex] = tempData.content;
+                }
+            }
+
+            // Restore swipe position after re-render (with small delay for DOM update)
+            if (currentSwipeIndex > 0) {
+                setTimeout(async () => {
+                    const firstMessage = chat?.[0];
+                    if (!firstMessage || !Array.isArray(firstMessage.swipes)) return;
+
+                    // Validate the swipe index is still valid
+                    const maxSwipeIndex = firstMessage.swipes.length - 1;
+                    const targetIndex = Math.min(currentSwipeIndex, maxSwipeIndex);
+                    if (targetIndex > 0) {
+                        await swipe(null, SWIPE_DIRECTION.RIGHT, {
+                            forceMesId: 0,
+                            forceSwipeId: targetIndex,
+                            message: firstMessage,
+                        });
+                    }
+                }, 50);
+            }
         }
 
         // Refresh button count
