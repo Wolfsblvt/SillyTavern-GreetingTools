@@ -72,13 +72,6 @@ export async function removeTempGreeting(swipeIndex) {
     await saveTempGreetings(tempGreetings);
 }
 
-/**
- * Clears all temp greetings from chat metadata.
- */
-export async function clearTempGreetings() {
-    await saveTempGreetings(new Map());
-}
-
 /** Default placeholder text for the generate greeting popup */
 const GENERATE_GREETING_PLACEHOLDER = t`Describe what kind of greeting scenario you want to generate. Leave empty for a general new greeting based on the character.`;
 

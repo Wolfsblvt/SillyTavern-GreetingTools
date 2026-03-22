@@ -5,7 +5,7 @@ import { t } from '../../../i18n.js';
 import { debounce, flashHighlight, getStringHash } from '../../../utils.js';
 import { debounce_timeout } from '../../../constants.js';
 import { EXTENSION_NAME } from './index.js';
-import { generateGreetingId, getGreetingToolsData, saveGreetingToolsData, updateButtonAppearance } from './greeting-tools.js';
+import { findGreetingMetadata, generateGreetingId, getGreetingToolsData, saveGreetingToolsData, updateButtonAppearance } from './greeting-tools.js';
 import { loader } from '../../../action-loader.js';
 import { greetingToolsSettings } from './settings.js';
 import {
@@ -287,25 +287,7 @@ export class GreetingToolsPopup {
         for (let i = 0; i < greetings.length; i++) {
             const content = greetings[i];
             const contentHash = getStringHash(content);
-
-            // Try to find existing metadata - first by index (via indexMap), then by contentHash
-            let matchedMeta = null;
-
-            // Primary: match by index using indexMap (most reliable, survives content normalization)
-            const indexMappedId = metadata.indexMap?.[i];
-            if (indexMappedId && metadata.greetings[indexMappedId]) {
-                matchedMeta = metadata.greetings[indexMappedId];
-            }
-
-            // Fallback: match by contentHash (for backwards compatibility or reordered greetings)
-            if (!matchedMeta) {
-                for (const [, meta] of Object.entries(metadata.greetings)) {
-                    if (meta.contentHash === contentHash) {
-                        matchedMeta = meta;
-                        break;
-                    }
-                }
-            }
+            const matchedMeta = findGreetingMetadata(metadata, i, contentHash);
 
             this.#altStates.push({
                 id: matchedMeta?.id ?? generateGreetingId(),
@@ -319,14 +301,13 @@ export class GreetingToolsPopup {
         // Load temp greetings from chat metadata
         this.#tempStates = [];
         const tempGreetings = getTempGreetings();
-        for (const [swipeIndex, tempData] of tempGreetings) {
+        for (const [, tempData] of tempGreetings) {
             this.#tempStates.push({
                 id: tempData.id,
                 content: tempData.content,
                 title: tempData.title,
                 description: tempData.description,
                 contentHash: getStringHash(tempData.content),
-                swipeIndex, // Keep track of original swipe index
             });
         }
     }
@@ -633,10 +614,12 @@ export class GreetingToolsPopup {
      * @param {GreetingEditorState} state
      * @param {number} index
      * @param {HTMLElement} list
-     * @param {{ forceOpen?: boolean }} [options={}] - Options for block creation
+     * @param {Object} [options={}] - Options for block creation
+     * @param {boolean} [options.forceOpen=false] - Whether to force the block open
+     * @param {boolean} [options.isTemp=false] - Whether this is a temporary greeting
      * @returns {HTMLElement}
      */
-    #createGreetingBlock(state, index, list, { forceOpen } = {}) {
+    #createGreetingBlock(state, index, list, { forceOpen = false, isTemp = false } = {}) {
         if (!this.#blockTemplate) {
             throw new Error('Block template not loaded');
         }
@@ -644,14 +627,29 @@ export class GreetingToolsPopup {
         const block = /** @type {HTMLElement} */ (this.#blockTemplate.cloneNode(true));
         block.dataset.greetingId = state.id;
 
-        // Apply toggle state: forceOpen overrides, then check stored state, then use global setting
-        const details = block.querySelector('details');
-        if (details instanceof HTMLDetailsElement) {
-            details.open = forceOpen ?? this.#getToggleState(state.id);
+        // Temp greeting styling
+        if (isTemp) {
+            block.dataset.tempGreeting = 'true';
+            block.classList.add('greeting-tools-temp-block');
         }
 
-        // Set title
-        this.#updateBlockTitle(block, state, { index });
+        // Apply toggle state: forceOpen overrides, then check stored state, then use global setting
+        // Temp greetings default to open
+        const details = block.querySelector('details');
+        if (details instanceof HTMLDetailsElement) {
+            details.open = forceOpen ?? this.#getToggleState(state.id) ?? isTemp;
+        }
+
+        // Set title (with temp marker if applicable)
+        if (isTemp) {
+            const titleEl = block.querySelector('.greeting-tools-block-title');
+            if (titleEl instanceof HTMLElement) {
+                const displayTitle = state.title || t`Temporary Greeting`;
+                titleEl.innerHTML = `<span class="greeting-tools-temp-marker">(${t`temp`})</span> ${displayTitle}`;
+            }
+        } else {
+            this.#updateBlockTitle(block, state, { index });
+        }
 
         // Set textarea content and unique ID for expanded editor
         const textarea = block.querySelector('.greeting-tools-textarea');
@@ -666,62 +664,85 @@ export class GreetingToolsPopup {
                 maximizeBtn.setAttribute('data-for', textareaId);
             }
 
-            // Update content on change
-            textarea.addEventListener('input', () => {
-                const stateIndex = this.#altStates.findIndex(s => s.id === state.id);
-                if (stateIndex !== -1) {
-                    this.#altStates[stateIndex].content = textarea.value;
-                    this.#altStates[stateIndex].contentHash = getStringHash(textarea.value);
-                    this.#syncGreetingsToCharacter();
-                    this.#saveDebounced();
-                }
-            });
+            // Update content on change (not for temp greetings - they're read-only)
+            if (!isTemp) {
+                textarea.addEventListener('input', () => {
+                    const stateIndex = this.#altStates.findIndex(s => s.id === state.id);
+                    if (stateIndex !== -1) {
+                        this.#altStates[stateIndex].content = textarea.value;
+                        this.#altStates[stateIndex].contentHash = getStringHash(textarea.value);
+                        this.#syncGreetingsToCharacter();
+                        this.#saveDebounced();
+                    }
+                });
+            }
         }
 
-        // Edit title button
+        // Edit title button (becomes save button for temp greetings)
         const editTitleBtn = block.querySelector('.greeting-tools-edit-title');
-        if (editTitleBtn) {
-            editTitleBtn.addEventListener('click', async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const clickedState = this.#altStates.find(s => s.id === state.id);
-                if (!clickedState) return;
-                await this.#showEditTitlePopup(clickedState, () => this.#refreshAllAltBlocks(list));
-            });
+        if (editTitleBtn instanceof HTMLElement) {
+            if (isTemp) {
+                editTitleBtn.innerHTML = '<i class="fa-solid fa-save"></i>';
+                editTitleBtn.title = t`Save to alternates`;
+                editTitleBtn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    await this.#handleSaveTempGreeting(state, list);
+                });
+            } else {
+                editTitleBtn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const clickedState = this.#altStates.find(s => s.id === state.id);
+                    if (!clickedState) return;
+                    await this.#showEditTitlePopup(clickedState, () => this.#refreshAllAltBlocks(list));
+                });
+            }
         }
 
-        // Auto-fill button (shortcut for auto-generating title/description)
+        // Auto-fill button (hidden for temp greetings)
         const autoFillBtn = block.querySelector('.greeting-tools-auto-fill');
-        if (autoFillBtn) {
-            autoFillBtn.addEventListener('click', async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const clickedState = this.#altStates.find(s => s.id === state.id);
-                if (!clickedState) return;
-                await this.#handleAutoFill(clickedState, () => this.#refreshAllAltBlocks(list));
-            });
+        if (autoFillBtn instanceof HTMLElement) {
+            if (isTemp) {
+                autoFillBtn.style.display = 'none';
+            } else {
+                autoFillBtn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const clickedState = this.#altStates.find(s => s.id === state.id);
+                    if (!clickedState) return;
+                    await this.#handleAutoFill(clickedState, () => this.#refreshAllAltBlocks(list));
+                });
+            }
         }
 
-        // Move up button
+        // Move buttons (hidden for temp greetings)
         const moveUpBtn = block.querySelector('.greeting-tools-move-up');
         if (moveUpBtn instanceof HTMLElement) {
-            moveUpBtn.classList.remove('move_up_alternate_greeting');
-            moveUpBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                this.#handleMove(state.id, -1, list);
-            });
+            if (isTemp) {
+                moveUpBtn.style.display = 'none';
+            } else {
+                moveUpBtn.classList.remove('move_up_alternate_greeting');
+                moveUpBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.#handleMove(state.id, -1, list);
+                });
+            }
         }
 
-        // Move down button
         const moveDownBtn = block.querySelector('.greeting-tools-move-down');
         if (moveDownBtn instanceof HTMLElement) {
-            moveDownBtn.classList.remove('move_down_alternate_greeting');
-            moveDownBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                this.#handleMove(state.id, 1, list);
-            });
+            if (isTemp) {
+                moveDownBtn.style.display = 'none';
+            } else {
+                moveDownBtn.classList.remove('move_down_alternate_greeting');
+                moveDownBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.#handleMove(state.id, 1, list);
+                });
+            }
         }
 
         // Delete button
@@ -730,7 +751,11 @@ export class GreetingToolsPopup {
             deleteBtn.addEventListener('click', async (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                await this.#handleDelete(state.id, list);
+                if (isTemp) {
+                    await this.#handleDeleteTempGreeting(state, list);
+                } else {
+                    await this.#handleDelete(state.id, list);
+                }
             });
         }
 
@@ -738,105 +763,26 @@ export class GreetingToolsPopup {
     }
 
     /**
-     * Creates a temp greeting block element with special styling and save button.
-     * @param {GreetingEditorState & { swipeIndex?: number }} state
-     * @param {number} index
-     * @param {HTMLElement} list
-     * @returns {HTMLElement}
+     * Finds the swipe index for a temp greeting by its ID.
+     * @param {string} greetingId - The greeting ID to look up
+     * @returns {number | undefined} The swipe index or undefined if not found
      */
-    #createTempGreetingBlock(state, index, list) {
-        if (!this.#blockTemplate) {
-            throw new Error('Block template not loaded');
+    #findTempGreetingSwipeIndex(greetingId) {
+        const tempGreetings = getTempGreetings();
+        for (const [swipeIndex, data] of tempGreetings) {
+            if (data.id === greetingId) return swipeIndex;
         }
-
-        const block = /** @type {HTMLElement} */ (this.#blockTemplate.cloneNode(true));
-        block.dataset.greetingId = state.id;
-        block.dataset.tempGreeting = 'true';
-        block.classList.add('greeting-tools-temp-block');
-
-        // Apply toggle state
-        const details = block.querySelector('details');
-        if (details instanceof HTMLDetailsElement) {
-            details.open = this.#getToggleState(state.id) ?? true; // Default open for temp
-        }
-
-        // Set title with "(temp)" marker
-        const titleEl = block.querySelector('.greeting-tools-block-title');
-        if (titleEl instanceof HTMLElement) {
-            const displayTitle = state.title || t`Temporary Greeting`;
-            titleEl.innerHTML = `<span class="greeting-tools-temp-marker">(${t`temp`})</span> ${displayTitle}`;
-        }
-
-        // Set textarea content (read-only for temp greetings)
-        const textarea = block.querySelector('.greeting-tools-textarea');
-        if (textarea instanceof HTMLTextAreaElement) {
-            const textareaId = `greeting-textarea-temp-${state.id}`;
-            textarea.id = textareaId;
-            textarea.value = state.content;
-
-            // Link maximize button to textarea
-            const maximizeBtn = block.querySelector('.editor_maximize');
-            if (maximizeBtn) {
-                maximizeBtn.setAttribute('data-for', textareaId);
-            }
-        }
-
-        // Replace edit title button with save button
-        const editTitleBtn = block.querySelector('.greeting-tools-edit-title');
-        if (editTitleBtn instanceof HTMLElement) {
-            editTitleBtn.innerHTML = '<i class="fa-solid fa-save"></i>';
-            editTitleBtn.title = t`Save to alternates`;
-            editTitleBtn.addEventListener('click', async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                await this.#handleSaveTempGreeting(state, list);
-            });
-        }
-
-        // Hide auto-fill button for temp greetings
-        const autoFillBtn = block.querySelector('.greeting-tools-auto-fill');
-        if (autoFillBtn instanceof HTMLElement) {
-            autoFillBtn.style.display = 'none';
-        }
-
-        // Hide move buttons for temp greetings
-        const moveUpBtn = block.querySelector('.greeting-tools-move-up');
-        if (moveUpBtn instanceof HTMLElement) {
-            moveUpBtn.style.display = 'none';
-        }
-        const moveDownBtn = block.querySelector('.greeting-tools-move-down');
-        if (moveDownBtn instanceof HTMLElement) {
-            moveDownBtn.style.display = 'none';
-        }
-
-        // Delete button - removes the temp greeting
-        const deleteBtn = block.querySelector('.greeting-tools-delete');
-        if (deleteBtn) {
-            deleteBtn.addEventListener('click', async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                await this.#handleDeleteTempGreeting(state, list);
-            });
-        }
-
-        return block;
+        return undefined;
     }
 
     /**
      * Handles saving a temp greeting to character alternates.
-     * @param {GreetingEditorState & { swipeIndex?: number }} state
+     * @param {GreetingEditorState} state
      * @param {HTMLElement} list
      */
     async #handleSaveTempGreeting(state, list) {
-        // Add to altStates
-        const newState = {
-            id: state.id,
-            content: state.content,
-            title: state.title,
-            description: state.description,
-            contentHash: state.contentHash,
-        };
-        this.#altStates.push(newState);
+        // Add to altStates (already a proper GreetingEditorState)
+        this.#altStates.push({ ...state });
 
         // Sync to character
         this.#syncGreetingsToCharacter();
@@ -848,9 +794,10 @@ export class GreetingToolsPopup {
             this.#tempStates.splice(tempIndex, 1);
         }
 
-        // Remove from chat metadata
-        if (state.swipeIndex !== undefined) {
-            await removeTempGreeting(state.swipeIndex);
+        // Remove from chat metadata (look up swipeIndex by ID)
+        const swipeIndex = this.#findTempGreetingSwipeIndex(state.id);
+        if (swipeIndex !== undefined) {
+            await removeTempGreeting(swipeIndex);
         }
 
         // Re-render
@@ -862,7 +809,7 @@ export class GreetingToolsPopup {
 
     /**
      * Handles deleting a temp greeting.
-     * @param {GreetingEditorState & { swipeIndex?: number }} state
+     * @param {GreetingEditorState} state
      * @param {HTMLElement} list
      */
     async #handleDeleteTempGreeting(state, list) {
@@ -878,9 +825,10 @@ export class GreetingToolsPopup {
             this.#tempStates.splice(tempIndex, 1);
         }
 
-        // Remove from chat metadata
-        if (state.swipeIndex !== undefined) {
-            await removeTempGreeting(state.swipeIndex);
+        // Remove from chat metadata (look up swipeIndex by ID)
+        const swipeIndex = this.#findTempGreetingSwipeIndex(state.id);
+        if (swipeIndex !== undefined) {
+            await removeTempGreeting(swipeIndex);
         }
 
         // Re-render
@@ -910,7 +858,7 @@ export class GreetingToolsPopup {
 
         // Render temp greetings with special marker
         for (let i = 0; i < this.#tempStates.length; i++) {
-            const block = this.#createTempGreetingBlock(this.#tempStates[i], i, list);
+            const block = this.#createGreetingBlock(this.#tempStates[i], i, list, { isTemp: true });
             list.appendChild(block);
         }
 

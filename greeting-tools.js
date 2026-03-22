@@ -34,6 +34,30 @@ export function generateGreetingId() {
 }
 
 /**
+ * Finds matching metadata for a greeting by index or content hash.
+ * @param {GreetingToolsData} metadata - The greeting tools metadata
+ * @param {number} index - The greeting index in alternate_greetings array
+ * @param {number} contentHash - Hash of the greeting content
+ * @returns {GreetingMetadata | null} Matching metadata or null
+ */
+export function findGreetingMetadata(metadata, index, contentHash) {
+    // Primary: match by index using indexMap (most reliable, survives content normalization)
+    const indexMappedId = metadata.indexMap?.[index];
+    if (indexMappedId && metadata.greetings[indexMappedId]) {
+        return metadata.greetings[indexMappedId];
+    }
+
+    // Fallback: match by contentHash (for backwards compatibility or reordered greetings)
+    for (const meta of Object.values(metadata.greetings)) {
+        if (meta.contentHash === contentHash) {
+            return meta;
+        }
+    }
+
+    return null;
+}
+
+/**
  * Gets the greeting tools data for the current character.
  * @param {Object} [options={}]
  * @param {string} [options.chid] - Character ID

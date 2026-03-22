@@ -5,7 +5,7 @@ import { t } from '../../../i18n.js';
 import { escapeHtml, getStringHash } from '../../../utils.js';
 import { performFuzzySearch } from '../../../power-user.js';
 import { EXTENSION_NAME } from './index.js';
-import { getGreetingToolsData, openGreetingToolsPopup, saveGreetingToolsData } from './greeting-tools.js';
+import { findGreetingMetadata, getGreetingToolsData, openGreetingToolsPopup, saveGreetingToolsData } from './greeting-tools.js';
 import {
     getTempGreetings,
     addTempGreeting,
@@ -94,25 +94,7 @@ function getGreetingOptions() {
     for (let i = 0; i < altGreetings.length; i++) {
         const content = altGreetings[i];
         const contentHash = getStringHash(content);
-
-        // Find matching metadata - first by index (via indexMap), then by contentHash
-        let matchedMeta = null;
-
-        // Primary: match by index using indexMap (most reliable, survives content normalization)
-        const indexMappedId = metadata.indexMap?.[i];
-        if (indexMappedId && metadata.greetings[indexMappedId]) {
-            matchedMeta = metadata.greetings[indexMappedId];
-        }
-
-        // Fallback: match by contentHash (for backwards compatibility or reordered greetings)
-        if (!matchedMeta) {
-            for (const [, meta] of Object.entries(metadata.greetings)) {
-                if (meta.contentHash === contentHash) {
-                    matchedMeta = meta;
-                    break;
-                }
-            }
-        }
+        const matchedMeta = findGreetingMetadata(metadata, i, contentHash);
 
         options.push({
             swipeIndex: i + 1,
@@ -601,15 +583,6 @@ async function handleSaveTempGreeting(selector) {
     updateSelectorUI(selector, { rebuildDropdown: true });
 
     toastr.success(t`Greeting saved to alternates`);
-}
-
-/**
- * Checks if the current swipe is a temporary greeting.
- * @returns {boolean}
- */
-function isCurrentSwipeTemp() {
-    const currentSwipeId = getCurrentSwipeId();
-    return getTempGreetings().has(currentSwipeId);
 }
 
 /**
