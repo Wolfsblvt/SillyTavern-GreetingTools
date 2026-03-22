@@ -1,12 +1,12 @@
 import { characters, menu_type, create_save, createOrEditCharacter, generateRaw, substituteParams, chat, swipe } from '../../../../script.js';
 import { SWIPE_DIRECTION } from '../../../constants.js';
 import { renderExtensionTemplateAsync } from '../../../extensions.js';
-import { Popup, POPUP_TYPE, POPUP_RESULT } from '../../../popup.js';
+import { Popup, POPUP_TYPE, POPUP_RESULT, PopupUtils } from '../../../popup.js';
 import { t } from '../../../i18n.js';
 import { debounce, flashHighlight, getStringHash } from '../../../utils.js';
 import { debounce_timeout } from '../../../constants.js';
 import { EXTENSION_NAME } from './index.js';
-import { findGreetingMetadata, generateGreetingId, getGreetingToolsData, saveGreetingToolsData, updateButtonAppearance } from './greeting-tools.js';
+import { findGreetingMetadata, generateGreetingId, getGreetingToolsData, saveGreetingToolsData, updateButtonAppearance, createTempMarker } from './greeting-tools.js';
 import { loader } from '../../../action-loader.js';
 import { greetingToolsSettings } from './settings.js';
 import {
@@ -429,13 +429,25 @@ export class GreetingToolsPopup {
             } else if (isTemp) {
                 // Temp greetings: show TEMP tag with title or fallback
                 const displayTitle = state.title || t`Temporary Greeting`;
-                titleSpan.innerHTML = `<span class="greeting-tools-temp-marker">TEMP</span>${displayTitle}`;
+                titleSpan.innerHTML = ''; // Clear existing content
+
+                const tempMarker = createTempMarker();
+                titleSpan.appendChild(tempMarker);
+
+                const titleText = document.createTextNode(displayTitle);
+                titleSpan.appendChild(titleText);
+
                 indexSpan.textContent = '';
             } else {
                 const displayIndex = index + 1;
                 if (state.title) {
                     titleSpan.textContent = state.title;
-                    indexSpan.innerHTML = `<span class="greeting-tools-index">(#${displayIndex})</span>`;
+                    indexSpan.innerHTML = ''; // Clear existing content
+
+                    const indexSpanContent = document.createElement('span');
+                    indexSpanContent.classList.add('greeting-tools-index');
+                    indexSpanContent.textContent = `(#${displayIndex})`;
+                    indexSpan.appendChild(indexSpanContent);
                 } else {
                     titleSpan.textContent = 'Alternate Greeting #';
                     indexSpan.textContent = String(displayIndex);
@@ -688,7 +700,12 @@ export class GreetingToolsPopup {
         const editTitleBtn = block.querySelector('.greeting-tools-edit-title');
         if (editTitleBtn instanceof HTMLElement) {
             if (isTemp) {
-                editTitleBtn.innerHTML = '<i class="fa-solid fa-save"></i>';
+                editTitleBtn.innerHTML = ''; // Clear existing content
+
+                const saveIcon = document.createElement('i');
+                saveIcon.classList.add('fa-solid', 'fa-save');
+                editTitleBtn.appendChild(saveIcon);
+
                 editTitleBtn.title = t`Save to alternates`;
                 editTitleBtn.addEventListener('click', async (e) => {
                     e.preventDefault();
@@ -1239,25 +1256,11 @@ export class GreetingToolsPopup {
      * @param {() => void} onSave - Callback to refresh UI after save
      */
     async #showEditTitlePopup(state, onSave) {
-        const content = document.createElement('div');
-        content.innerHTML = `
-            <h3 data-i18n="Edit Greeting Details">Edit Greeting Details</h3>
-            <p data-i18n="Give this greeting a memorable title and optional description.">Give this greeting a memorable title and optional description.</p>
-        `;
-
-        /** @type {Popup} */
-        let popup;
-
-        const handleGenerate = async () => {
-            const titleInput = popup.mainInput;
-            const descInput = popup.body?.querySelector('#greeting-description-input');
-            await this.#performAutoFill(state, {
-                titleInput: titleInput ?? null,
-                descInput: descInput instanceof HTMLTextAreaElement ? descInput : null,
-            });
-        };
-
-        popup = new Popup(content, POPUP_TYPE.INPUT, state.title, {
+        const content = PopupUtils.BuildTextWithHeader(
+            t`Edit Greeting Details`,
+            t`Give this greeting a memorable title and optional description.`
+        );
+        const popup = new Popup(content, POPUP_TYPE.INPUT, state.title, {
             customInputs: [
                 {
                     id: 'greeting-description-input',
@@ -1273,7 +1276,14 @@ export class GreetingToolsPopup {
                     text: t`Auto-Fill`,
                     tooltip: t`Automatically generate a title and description based on the greeting content`,
                     icon: 'fa-wand-magic-sparkles',
-                    action: handleGenerate,
+                    action: async () => {
+                        const titleInput = popup.mainInput;
+                        const descInput = popup.body?.querySelector('#greeting-description-input');
+                        await this.#performAutoFill(state, {
+                            titleInput: titleInput ?? null,
+                            descInput: descInput instanceof HTMLTextAreaElement ? descInput : null,
+                        });
+                    },
                 },
             ],
         });

@@ -5,7 +5,7 @@ import { t } from '../../../i18n.js';
 import { escapeHtml, getStringHash } from '../../../utils.js';
 import { performFuzzySearch } from '../../../power-user.js';
 import { EXTENSION_NAME } from './index.js';
-import { findGreetingMetadata, getGreetingToolsData, openGreetingToolsPopup, saveGreetingToolsData } from './greeting-tools.js';
+import { findGreetingMetadata, getGreetingToolsData, openGreetingToolsPopup, saveGreetingToolsData, createTempMarker } from './greeting-tools.js';
 import {
     getTempGreetings,
     addTempGreeting,
@@ -148,21 +148,33 @@ function getContentPreview(content) {
 /**
  * Creates a select2 option element for a greeting.
  * @param {GreetingOption} option
- * @returns {string} HTML string
+ * @returns {HTMLElement} DOM element
  */
-function createOptionHtml(option) {
+function createOptionElement(option) {
+    const wrapper = document.createElement('div');
+    wrapper.classList.add('greeting-selector-option');
+
+    const titleDiv = document.createElement('div');
+    titleDiv.classList.add('greeting-selector-option-title');
+
+    if (option.isTemp) {
+        const tempMarker = createTempMarker();
+        titleDiv.appendChild(tempMarker);
+    }
+
+    const titleText = document.createTextNode(escapeHtml(option.title));
+    titleDiv.appendChild(titleText);
+    wrapper.appendChild(titleDiv);
+
     const descHtml = option.description
         ? `<div class="greeting-selector-option-desc">${escapeHtml(option.description)}</div>`
         : `<div class="greeting-selector-option-preview">${escapeHtml(getContentPreview(option.content))}</div>`;
 
-    const tempMarker = option.isTemp ? '<span class="greeting-tools-temp-marker">TEMP</span>' : '';
+    const descContainer = document.createElement('div');
+    descContainer.innerHTML = descHtml;
+    wrapper.appendChild(descContainer);
 
-    return `
-        <div class="greeting-selector-option">
-            <div class="greeting-selector-option-title">${tempMarker}${escapeHtml(option.title)}</div>
-            ${descHtml}
-        </div>
-    `;
+    return wrapper;
 }
 
 
@@ -234,8 +246,14 @@ function updateSelectorUI(selector, { rebuildDropdown = false } = {}) {
     const titleEl = selector.querySelector('.greeting-selector-title-display');
     if (titleEl) {
         const title = isTempGreeting ? tempData?.title : currentOption?.title;
+        titleEl.innerHTML = ''; // Clear existing content
+
         if (isTempGreeting) {
-            titleEl.innerHTML = `<span class="greeting-tools-temp-marker">TEMP</span>${title || t`Temporary Greeting`}`;
+            const tempMarker = createTempMarker();
+            titleEl.appendChild(tempMarker);
+
+            const titleText = document.createTextNode(title || t`Temporary Greeting`);
+            titleEl.appendChild(titleText);
         } else {
             titleEl.textContent = title || t`Greeting`;
         }
@@ -328,10 +346,8 @@ function updateSelectorUI(selector, { rebuildDropdown = false } = {}) {
                         if (!state.id) return state.text;
                         const opt = cachedOptions.find(o => o.swipeIndex === Number(state.id));
                         if (!opt) return state.text;
-                        const html = createOptionHtml(opt);
-                        const wrapper = document.createElement('div');
-                        wrapper.innerHTML = html;
-                        return $(wrapper);
+                        const element = createOptionElement(opt);
+                        return $(element);
                     },
                     templateSelection: (state) => state.text,
                 });

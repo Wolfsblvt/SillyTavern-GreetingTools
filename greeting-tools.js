@@ -1,6 +1,6 @@
 import { characters, eventSource, event_types, menu_type, this_chid } from '../../../../script.js';
 import { writeExtensionField } from '../../../extensions.js';
-import { t } from '../../../i18n.js';
+import { t, translate } from '../../../i18n.js';
 import { EXTENSION_KEY } from './index.js';
 import { GreetingToolsPopup } from './greeting-tools-popup.js';
 
@@ -31,6 +31,17 @@ import { GreetingToolsPopup } from './greeting-tools-popup.js';
  */
 export function generateGreetingId() {
     return `g_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`;
+}
+
+/**
+ * Creates a TEMP marker element for temporary greetings.
+ * @returns {HTMLElement} The TEMP marker span element
+ */
+export function createTempMarker() {
+    const tempMarker = document.createElement('span');
+    tempMarker.classList.add('greeting-tools-temp-marker');
+    tempMarker.textContent = translate('TEMP', 'temp_marker_text');
+    return tempMarker;
 }
 
 /**
