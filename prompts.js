@@ -12,8 +12,12 @@ Your task is to generate a short, memorable **title** and a brief **description*
 
 ## Instructions
 - The **title** should be 2-7 words, catchy and descriptive of the greeting's theme or mood, making it unique and recognizable between the other greetings
-- The **description** should be 2-6 sentences summarizing what makes this greeting unique
-- Be creative but accurate to the greeting's content
+- The **description** should be 2-6 sentences summarizing the greeting, picking up what makes this unique
+  - Add double linebreaks to split the description if needed, for better formatting
+  - Be creative but accurate to the greeting's content
+  - Keep the description precise and as a summary of the greeting
+  - This is not a meta summary, but a direct description of the greeting content
+  - **DO NOT** start with "This greeting..." or similar phrase
 - Output **ONLY** the title and description in the exact format shown below
 
 {{#if charDescription}}
