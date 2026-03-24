@@ -1158,7 +1158,7 @@ export class GreetingToolsPopup {
         // Pre-generation confirmation if both fields are filled
         if (currentTitle && currentDesc) {
             const confirmGenerate = await Popup.show.confirm(
-                t`Generate new values?`,
+                t`Generate New Title/Description?`,
                 t`Both title and description already have values. Generate new content to replace them?`,
             ) === POPUP_RESULT.AFFIRMATIVE;
             if (!confirmGenerate) return false;
@@ -1258,7 +1258,7 @@ export class GreetingToolsPopup {
     async #showEditTitlePopup(state, onSave) {
         const content = PopupUtils.BuildTextWithHeader(
             t`Edit Greeting Details`,
-            t`Give this greeting a memorable title and optional description.`
+            t`Give this greeting a memorable title and optional description.`,
         );
         const popup = new Popup(content, POPUP_TYPE.INPUT, state.title, {
             customInputs: [
@@ -1266,7 +1266,7 @@ export class GreetingToolsPopup {
                     id: 'greeting-description-input',
                     label: t`Description` + ' / ' + t`Summary`,
                     type: 'textarea',
-                    rows: 7,
+                    rows: 12,
                     defaultState: state.description,
                     tooltip: t`Optional description or summary`,
                 },

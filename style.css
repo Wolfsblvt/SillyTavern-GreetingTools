@@ -283,9 +283,9 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    vertical-align: text-bottom;
     color: var(--SmartThemeQuoteColor, #f0ad4e);
     background: color-mix(in srgb, var(--SmartThemeQuoteColor, #f0ad4e) 20%, transparent);
     border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor, #f0ad4e) 50%, transparent);
     border-radius: 4px;
-    vertical-align: middle;
 }
