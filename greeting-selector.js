@@ -162,7 +162,7 @@ function createOptionElement(option) {
         titleDiv.appendChild(tempMarker);
     }
 
-    const titleText = document.createTextNode(escapeHtml(option.title));
+    const titleText = document.createTextNode(option.title);
     titleDiv.appendChild(titleText);
     wrapper.appendChild(titleDiv);
 
