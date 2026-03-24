@@ -1,6 +1,7 @@
 import { setupButtonIntercept } from './greeting-tools.js';
 import { initGreetingSelector } from './greeting-selector.js';
 import { initSettings, injectSettingsUI } from './settings.js';
+import { registerGreetingToolsSlashCommands } from './slash-commands.js';
 
 export const EXTENSION_KEY = 'greeting_tools';
 export const EXTENSION_NAME = 'SillyTavern-GreetingTools';
@@ -23,6 +24,7 @@ export async function init() {
 
     setupButtonIntercept();
     initGreetingSelector();
+    registerGreetingToolsSlashCommands();
 
     initialized = true;
 }
