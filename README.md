@@ -11,6 +11,9 @@ This extension replaces the default "Alternate Greetings" button and popup with 
 > [!IMPORTANT]
 > This extension requires the **staging** branch of SillyTavern.
 
+> [!NOTE]
+> This extension requires the **[Experimental Macro Engine](https://docs.sillytavern.app/usage/core-concepts/macros/#macros)** to be enabled.
+
 ## Installation
 
 Install using SillyTavern's extension installer from the URL:
@@ -125,7 +128,7 @@ This list mostly functions as a personal reminder of what still needs to be done
 - [x] LLM-powered greeting generation (with optional theme)
 - [x] Temporary greetings (generate, preview, save/discard)
 - [x] Customizable prompt templates
-- [ ] Check if experimental macro engine is enabled, and warn/prompt otherwise
+- [x] Check if experimental macro engine is enabled, and warn/prompt otherwise
 - [ ] Add init/success state of extension, so functions only "work" if the extension was initialized successfully
 - [ ] Make temp greeting title/desc editable and generateable
 - [ ] Refactoring / code cleanup
