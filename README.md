@@ -27,8 +27,6 @@ The extension replaces the built-in "Alternate Greetings" button on the characte
 
 Clicking it opens the Greeting Tools popup, which gives you a full overview and editor for all of your character's greetings in one place.
 
-<!-- TODO: Screenshot of the Greeting Tools popup showing the main greeting and a few alternate greetings with titles -->
-
 - **Titles and descriptions** — Give each greeting a custom title and an optional description. This makes it easy to tell your greetings apart at a glance, especially when a character has many of them or they are very long.
 - **Edit greeting content** — The full greeting text is editable right in the popup. Each greeting can be expanded or collapsed individually, and there's a maximize button to open a greeting in a full-screen editor.
 - **Reorder greetings** — Move greetings up and down with the arrow buttons. You can even swap an alternate greeting with the main greeting.
@@ -36,13 +34,11 @@ Clicking it opens the Greeting Tools popup, which gives you a full overview and 
 - **Collapse / Expand all** — Toolbar buttons to quickly collapse or expand every greeting at once.
 - **Keyboard navigation** — Use Arrow Up/Down to navigate between greeting blocks. Hold Ctrl+Arrow while inside a textarea to jump to the next greeting.
 
+<img width="559" height="456" alt="Screenshot of the Greeting Tools popup showing the main greeting and a few alternate greetings with titles" src="https://github.com/user-attachments/assets/50919d4d-e535-4f27-b3a1-d87571353107" />
+
 ### Inline Greeting Selector (Chat Widget)
 
 When a chat starts with a character greeting, an inline **greeting selector** widget appears directly above the first message.
-
-<!-- TODO: Screenshot of the greeting selector widget in the chat, showing the title, description, swipe counter, and action buttons -->
-
-<!-- TODO: Screenshot of the greeting selector widget in selector mode, showing the dropdown with searchable greetings -->
 
 - **See which greeting is active** — The widget shows the current greeting's title and description right in the chat, so you always know which greeting you're looking at.
 - **Switch greetings from the chat** — Click the shuffle button to open a searchable dropdown of all available greetings. The dropdown supports **fuzzy search** across titles, descriptions, and even greeting content, so you can find the right one fast.
@@ -50,22 +46,22 @@ When a chat starts with a character greeting, an inline **greeting selector** wi
 - **Jump to the editor** — The pencil button opens the Greeting Tools popup and highlights the currently active greeting.
 - **Only when changeable** — The selector buttons are only interactive when the chat has exactly one message (the greeting). Once the conversation continues, it switches to a read-only display.
 
+![GIF of the greeting selector widget in the chat, showing the title, description and action buttons; opening the selector and searching for a new greeting to navigate to](https://github.com/user-attachments/assets/4ffcdd80-d01a-4e0b-9db4-45b58db51265)
+
 ### AI-Powered Title & Description (Auto-Fill)
 
 Don't want to come up with titles yourself? Let the LLM do it.
 
-<!-- TODO: Screenshot or GIF of the auto-fill wand button and the generated title/description appearing -->
-
-- **Auto-fill button** (wand icon on each greeting) — Sends the greeting content to your LLM and generates a short, catchy title and a brief description automatically.
+- **Auto-fill button** (wand icon on each greeting, or wand button in edit popup) — Sends the greeting content to your LLM and generates a short, catchy title and a brief description automatically.
 - **Smart fill behavior** — If a title or description already exists, the extension asks before overwriting and shows a before/after preview so you can decide.
 - **Edit title popup** — Click the pencil icon on any greeting to manually edit its title and description. The Auto-Fill button is also available inside this popup.
 - **Context-aware** — The LLM receives existing greeting titles so it can generate names that are distinct and don't overlap.
 
+![GIF of the auto-fill wand button and the generated title/description appearing](https://github.com/user-attachments/assets/0716ec32-46e2-447c-b995-09fc3a297b73)
+
 ### AI-Powered Greeting Generation
 
 Generate entirely new greeting messages using your LLM, directly from the popup or from the chat.
-
-<!-- TODO: Screenshot of the "Generate New Greeting" popup with the theme input and checkbox -->
 
 - **Generate from the popup** — Click **"Generate New Greeting"** in the toolbar. You'll be asked for an optional theme or scenario (e.g., *"A rainy day at a café"*). Leave it empty for a general new greeting based on the character.
 - **Title & description included** — A checkbox (on by default) lets you also generate a title and description alongside the greeting content in a single flow.
@@ -73,22 +69,22 @@ Generate entirely new greeting messages using your LLM, directly from the popup 
 - **Diverse results** — Existing greeting titles are sent as context so the LLM avoids creating something too similar to what already exists.
 - **Automatic macro replacement** — By default, character and user names in the generated text are replaced with `{{char}}` and `{{user}}` macros, keeping your greetings portable. This can be toggled off in settings. (Changeable via [settings](#settings))
 
+<img width="336" height="182" alt="Screenshot of the 'Generate New Greeting' popup with the theme input and checkbox" src="https://github.com/user-attachments/assets/7bff6156-ddc1-401f-9368-6d5c8c481384" />
+
 ### Temporary Greetings
 
 Generate a greeting on-the-fly without permanently adding it to the character.
-
-<!-- TODO: Screenshot of a temporary greeting in the selector with the TEMP marker, and the save/discard buttons -->
 
 - **Generate temporary greeting** — From the greeting selector widget in the chat, click the wand icon. You'll get the same generation popup, and the result is added as a new swipe on the first message.
 - **Marked as `TEMP`** — Temporary greetings are clearly tagged with a `TEMP` marker in both the selector and the popup, so you won't confuse them with saved greetings.
 - **Try before you save** — Browse the temporary greeting in the chat to see how it reads. If you like it, click the save button (floppy disk icon) to permanently add it as an alternate greeting. If not, just discard it.
 - **Persisted per chat** — Temporary greetings are stored in the chat metadata, so they survive a page refresh within the same chat session. They don't affect the character card itself until you save them.
 
+<img width="403" height="148" alt="Screenshot of temporary greetings in the popup with the TEMP marker, and the save/discard buttons" src="https://github.com/user-attachments/assets/902a01b1-6407-4d60-a33d-b56113c7e786" />
+
 ### Settings
 
 Access the extension settings under **Extensions → Greeting Tools** in SillyTavern's settings panel.
-
-<!-- TODO: Screenshot of the settings panel showing the toggles and the prompt template drawer -->
 
 - **Collapse greetings by default** — When enabled, greeting blocks in the popup start collapsed instead of expanded. Useful if you have many greetings and prefer a compact overview, or if you only want to see the descriptions.
 - **Replace names with macros in generated greetings** — When enabled (default), the extension automatically replaces the character's and user's names with `{{char}}` and `{{user}}` in any LLM-generated greeting text.
