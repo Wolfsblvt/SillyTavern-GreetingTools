@@ -12,6 +12,7 @@ import { greetingToolsSettings } from './settings.js';
 import {
     generateGreetingFlow,
     getTempGreetings,
+    saveTempGreetings,
     removeTempGreeting,
 } from './greeting-generator.js';
 
@@ -161,13 +162,25 @@ export class GreetingToolsPopup {
                 targetBlock = this.#template?.querySelector('.greeting-tools-main-block');
                 targetTextarea = targetBlock?.querySelector('textarea');
             } else {
-                // Alternate greeting (swipe index 1 = array index 0)
-                // Exclude main block from the query
-                const altIndex = swipeIndex - 1;
-                const blocks = list.querySelectorAll('.greeting-tools-block:not(.greeting-tools-main-block) details');
-                if (altIndex >= 0 && altIndex < blocks.length) {
-                    targetBlock = blocks[altIndex];
-                    targetTextarea = targetBlock?.querySelector('textarea');
+                // Check if this is a temp greeting
+                const tempGreetings = getTempGreetings();
+                const tempData = tempGreetings.get(swipeIndex);
+
+                if (tempData) {
+                    // Find temp greeting block by greeting ID
+                    const block = list.querySelector(`.greeting-tools-block[data-greeting-id="${tempData.id}"]`);
+                    if (block) {
+                        targetBlock = block.querySelector('details');
+                        targetTextarea = block.querySelector('textarea');
+                    }
+                } else {
+                    // Alternate greeting (swipe index 1 = array index 0)
+                    const altIndex = swipeIndex - 1;
+                    const blocks = list.querySelectorAll('.greeting-tools-block:not(.greeting-tools-main-block):not(.greeting-tools-temp-block) details');
+                    if (altIndex >= 0 && altIndex < blocks.length) {
+                        targetBlock = blocks[altIndex];
+                        targetTextarea = targetBlock?.querySelector('textarea');
+                    }
                 }
             }
 
@@ -352,6 +365,27 @@ export class GreetingToolsPopup {
         }
 
         await saveGreetingToolsData(data, { chid: this.#chid });
+    }
+
+    /**
+     * Saves temp greeting metadata changes (title/description) back to chat metadata.
+     * @returns {Promise<void>}
+     */
+    async #saveTempMetadata() {
+        const tempGreetings = getTempGreetings();
+        for (const tempState of this.#tempStates) {
+            for (const [swipeIndex, data] of tempGreetings) {
+                if (data.id === tempState.id) {
+                    tempGreetings.set(swipeIndex, {
+                        ...data,
+                        title: tempState.title,
+                        description: tempState.description,
+                    });
+                    break;
+                }
+            }
+        }
+        await saveTempGreetings(tempGreetings);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -696,21 +730,19 @@ export class GreetingToolsPopup {
             }
         }
 
-        // Edit title button (becomes save button for temp greetings)
+        // Edit title button
         const editTitleBtn = block.querySelector('.greeting-tools-edit-title');
         if (editTitleBtn instanceof HTMLElement) {
             if (isTemp) {
-                editTitleBtn.innerHTML = ''; // Clear existing content
-
-                const saveIcon = document.createElement('i');
-                saveIcon.classList.add('fa-solid', 'fa-save');
-                editTitleBtn.appendChild(saveIcon);
-
-                editTitleBtn.title = t`Save to alternates`;
                 editTitleBtn.addEventListener('click', async (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    await this.#handleSaveTempGreeting(state, list);
+                    const clickedState = this.#tempStates.find(s => s.id === state.id);
+                    if (!clickedState) return;
+                    await this.#showEditTitlePopup(clickedState, () => {
+                        this.#renderGreetingsList(list);
+                        this.#saveTempMetadata();
+                    });
                 });
             } else {
                 editTitleBtn.addEventListener('click', async (e) => {
@@ -723,27 +755,42 @@ export class GreetingToolsPopup {
             }
         }
 
-        // Auto-fill button (hidden for temp greetings)
+        // Auto-fill button
         const autoFillBtn = block.querySelector('.greeting-tools-auto-fill');
         if (autoFillBtn instanceof HTMLElement) {
-            if (isTemp) {
-                autoFillBtn.style.display = 'none';
-            } else {
-                autoFillBtn.addEventListener('click', async (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const clickedState = this.#altStates.find(s => s.id === state.id);
-                    if (!clickedState) return;
-                    await this.#handleAutoFill(clickedState, () => this.#refreshAllAltBlocks(list));
+            autoFillBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const clickedState = isTemp
+                    ? this.#tempStates.find(s => s.id === state.id)
+                    : this.#altStates.find(s => s.id === state.id);
+                if (!clickedState) return;
+                await this.#handleAutoFill(clickedState, () => {
+                    if (isTemp) {
+                        this.#renderGreetingsList(list);
+                        this.#saveTempMetadata();
+                    } else {
+                        this.#refreshAllAltBlocks(list);
+                    }
                 });
-            }
+            });
         }
 
-        // Move buttons (hidden for temp greetings)
+        // Move buttons (save-to-alternates replaces move-up for temp greetings)
         const moveUpBtn = block.querySelector('.greeting-tools-move-up');
         if (moveUpBtn instanceof HTMLElement) {
             if (isTemp) {
-                moveUpBtn.style.display = 'none';
+                // Repurpose move-up button as save-to-alternates for temp greetings
+                moveUpBtn.innerHTML = '';
+                const saveIcon = document.createElement('i');
+                saveIcon.classList.add('fa-solid', 'fa-save');
+                moveUpBtn.appendChild(saveIcon);
+                moveUpBtn.title = t`Save to alternates`;
+                moveUpBtn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    await this.#handleSaveTempGreeting(state, list);
+                });
             } else {
                 moveUpBtn.classList.remove('move_up_alternate_greeting');
                 moveUpBtn.addEventListener('click', (e) => {

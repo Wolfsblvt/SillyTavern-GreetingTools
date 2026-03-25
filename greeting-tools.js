@@ -3,6 +3,7 @@ import { writeExtensionField } from '../../../extensions.js';
 import { t, translate } from '../../../i18n.js';
 import { EXTENSION_KEY } from './index.js';
 import { GreetingToolsPopup } from './greeting-tools-popup.js';
+import { getTempGreetings } from './greeting-generator.js';
 
 /** @typedef {import('./greeting-tools-popup.js').OpenPopupOptions} OpenPopupOptions */
 
@@ -130,10 +131,10 @@ export async function openGreetingToolsPopup(chid, options = {}) {
 
 /**
  * Gets the total greeting count for a character (main + alternates).
- * @param {string} [chid] - Character ID (defaults to current character)
+ * @param {string|null} [chid=null] - Character ID (defaults to current character)
  * @returns {number} Total number of greetings
  */
-function getGreetingCount(chid) {
+function getGreetingCount(chid = null) {
     const id = chid ?? this_chid;
     const character = characters[id];
     if (!character) return 0;
@@ -150,20 +151,20 @@ function getGreetingCount(chid) {
 export function updateButtonAppearance(chid) {
     const buttons = document.querySelectorAll('.open_alternate_greetings');
     const count = getGreetingCount(chid);
+    const tempCount = getTempGreetings().size;
 
     buttons.forEach(button => {
         // Update tooltip with count info
         const tooltip = count > 1
-            ? t`Manage ${count} greetings - edit titles, descriptions, and reorder`
+            ? t`Manage ${count}${tempCount > 0 ? `+${tempCount}` : ''} greetings - edit titles, descriptions, and reorder`
             : t`Manage greetings - edit titles, descriptions, and reorder`;
         button.setAttribute('title', tooltip);
 
         const textSpan = button.querySelector('span');
         if (textSpan instanceof HTMLElement) {
             // Show count in parentheses only if more than 1 greeting
-            const displayText = count > 1 ? t`Greeting Tools` + ` (${count})` : t`Greeting Tools`;
+            const displayText = count > 1 ? t`Greeting Tools` + ` (${count}${tempCount > 0 ? `+${tempCount}` : ''})` : t`Greeting Tools`;
             textSpan.textContent = displayText;
-            textSpan.dataset.i18n = 'Greeting Tools';
         }
     });
 }

@@ -5,7 +5,7 @@ import { t } from '../../../i18n.js';
 import { escapeHtml, getStringHash } from '../../../utils.js';
 import { performFuzzySearch } from '../../../power-user.js';
 import { EXTENSION_NAME } from './index.js';
-import { findGreetingMetadata, getGreetingToolsData, openGreetingToolsPopup, saveGreetingToolsData, createTempMarker } from './greeting-tools.js';
+import { findGreetingMetadata, getGreetingToolsData, openGreetingToolsPopup, saveGreetingToolsData, createTempMarker, updateButtonAppearance } from './greeting-tools.js';
 import {
     getTempGreetings,
     addTempGreeting,
@@ -559,8 +559,9 @@ async function handleGenerateTempGreeting(selector) {
             forceSwipeId: newSwipeIndex,
         });
 
-        // Update selector UI
+        // Update UI
         updateSelectorUI(selector, { rebuildDropdown: true });
+        updateButtonAppearance(this_chid);
 
         toastr.success(t`Temporary greeting generated`);
     } catch (error) {
