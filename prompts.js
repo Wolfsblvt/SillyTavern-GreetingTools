@@ -87,7 +87,8 @@ The following greetings already exist. Try to create a unique scenario that diff
 {{#if customPrompt}}
 ## Special Instructions
 The user has requested the following specific theme or scenario for this greeting:
-**{{customPrompt}}**
+
+{{customPrompt}}
 
 Make sure to incorporate this into the greeting while staying true to the character.
 

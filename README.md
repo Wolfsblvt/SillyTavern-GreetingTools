@@ -125,7 +125,10 @@ This list mostly functions as a personal reminder of what still needs to be done
 - [x] LLM-powered greeting generation (with optional theme)
 - [x] Temporary greetings (generate, preview, save/discard)
 - [x] Customizable prompt templates
+- [ ] Check if experimental macro engine is enabled, and warn/prompt otherwise
+- [ ] Add init/success state of extension, so functions only "work" if the extension was initialized successfully
 - [ ] Make temp greeting title/desc editable and generateable
+- [ ] Refactoring / code cleanup
 - [ ] "Replace names with macros" button in the popup for manual replacing
 - [ ] "Expand" button in the in-chat widget to see full description
 - [ ] Store extension version in extension metadata - on update check/ask if default prompts should be updated
