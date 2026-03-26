@@ -641,7 +641,8 @@ export class GreetingToolsPopup {
             }
 
             // Update content on change
-            textarea.addEventListener('input', () => {
+            // Uses jQuery .on() because the maximize editor syncs via $.trigger('input')
+            $(textarea).on('input', () => {
                 if (this.#mainState) {
                     this.#mainState.content = textarea.value;
                     this.#mainState.contentHash = getStringHash(textarea.value);
@@ -779,7 +780,8 @@ export class GreetingToolsPopup {
             }
 
             // Update content on change (works for all greeting types via GreetingContext)
-            textarea.addEventListener('input', () => {
+            // Uses jQuery .on() because the maximize editor syncs via $.trigger('input')
+            $(textarea).on('input', () => {
                 const ctx = this.#resolveGreetingContext(state.id);
                 if (!ctx) return;
                 ctx.state.content = textarea.value;
