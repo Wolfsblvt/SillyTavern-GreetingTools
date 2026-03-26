@@ -3,10 +3,10 @@
  * Provides types, metadata CRUD, temp greeting CRUD, and shared utility functions.
  */
 
-import { characters, this_chid, chat_metadata, saveChatConditional } from '../../../../script.js';
-import { writeExtensionField } from '../../../extensions.js';
-import { t, translate } from '../../../i18n.js';
-import { EXTENSION_KEY, EXTENSION_NAME } from './index.js';
+import { characters, this_chid, chat_metadata, saveChatConditional } from '../../../../../script.js';
+import { writeExtensionField } from '../../../../extensions.js';
+import { t, translate } from '../../../../i18n.js';
+import { EXTENSION_KEY, EXTENSION_NAME } from '../index.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types

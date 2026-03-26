@@ -3,12 +3,12 @@
  * Used by both the Greeting Tools popup and the inline greeting selector.
  */
 
-import { characters, generateRaw, substituteParams, name1, name2, this_chid } from '../../../../script.js';
-import { Popup, POPUP_TYPE } from '../../../popup.js';
-import { t } from '../../../i18n.js';
-import { escapeRegex } from '../../../utils.js';
+import { characters, generateRaw, substituteParams, name1, name2, this_chid } from '../../../../../script.js';
+import { Popup, POPUP_TYPE } from '../../../../popup.js';
+import { t } from '../../../../i18n.js';
+import { escapeRegex } from '../../../../utils.js';
 import { greetingToolsSettings } from './settings.js';
-import { getGreetingToolsData, generateGreetingId } from './greeting-data.js';
+import { getGreetingToolsData, generateGreetingId } from './data.js';
 import { loader } from '/scripts/action-loader.js';
 
 /** Default placeholder text for the generate greeting popup */

@@ -3,11 +3,11 @@
  * Handles loading, saving, and accessing extension settings.
  */
 
-import { saveSettingsDebounced } from '../../../../script.js';
-import { extension_settings, renderExtensionTemplateAsync } from '../../../extensions.js';
-import { t } from '../../../i18n.js';
-import { EXTENSION_KEY, EXTENSION_NAME } from './index.js';
-import { DEFAULT_GENERATE_SYSTEM_PROMPT, DEFAULT_GENERATE_GREETING_SYSTEM_PROMPT, DEFAULT_GENERATION_PROMPT_WITH_THEME, DEFAULT_GENERATION_PROMPT_WITHOUT_THEME } from './prompts.js';
+import { saveSettingsDebounced } from '../../../../../script.js';
+import { extension_settings, renderExtensionTemplateAsync } from '../../../../extensions.js';
+import { t } from '../../../../i18n.js';
+import { EXTENSION_KEY, EXTENSION_NAME } from '../index.js';
+import { DEFAULT_GENERATE_SYSTEM_PROMPT, DEFAULT_GENERATE_GREETING_SYSTEM_PROMPT, DEFAULT_GENERATION_PROMPT_WITH_THEME, DEFAULT_GENERATION_PROMPT_WITHOUT_THEME } from './default-prompts.js';
 
 /** @readonly Default settings values */
 const defaultSettings = {

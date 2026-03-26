@@ -1,13 +1,13 @@
-import { characters, chat, eventSource, event_types, swipe, this_chid } from '../../../../script.js';
-import { SWIPE_DIRECTION } from '../../../constants.js';
-import { renderExtensionTemplateAsync } from '../../../extensions.js';
-import { t } from '../../../i18n.js';
-import { escapeHtml, getStringHash } from '../../../utils.js';
-import { performFuzzySearch } from '../../../power-user.js';
-import { EXTENSION_NAME } from './index.js';
-import { findGreetingMetadata, getGreetingToolsData, saveGreetingToolsData, createTempMarker, updateButtonAppearance, getTempGreetings, addTempGreeting, removeTempGreeting } from './greeting-data.js';
-import { openGreetingToolsPopup } from './greeting-tools-popup.js';
-import { generateGreetingFlow } from './greeting-generator.js';
+import { characters, chat, eventSource, event_types, swipe, this_chid } from '../../../../../script.js';
+import { SWIPE_DIRECTION } from '../../../../constants.js';
+import { renderExtensionTemplateAsync } from '../../../../extensions.js';
+import { t } from '../../../../i18n.js';
+import { escapeHtml, getStringHash } from '../../../../utils.js';
+import { performFuzzySearch } from '../../../../power-user.js';
+import { EXTENSION_NAME } from '../index.js';
+import { findGreetingMetadata, getGreetingToolsData, saveGreetingToolsData, createTempMarker, updateButtonAppearance, getTempGreetings, addTempGreeting, removeTempGreeting } from './data.js';
+import { openGreetingToolsPopup } from './popup.js';
+import { generateGreetingFlow } from './generator.js';
 
 /**
  * @typedef {Object} GreetingOption
@@ -412,7 +412,7 @@ async function injectGreetingSelector() {
     try {
         // Load template if needed
         if (!selectorTemplate) {
-            const html = await renderExtensionTemplateAsync(`third-party/${EXTENSION_NAME}`, 'templates/greeting-selector');
+            const html = await renderExtensionTemplateAsync(`third-party/${EXTENSION_NAME}`, 'templates/selector');
             const container = document.createElement('div');
             container.innerHTML = html;
             selectorTemplate = /** @type {HTMLElement} */ (container.firstElementChild);

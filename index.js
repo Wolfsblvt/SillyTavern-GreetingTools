@@ -1,6 +1,6 @@
-import { setupButtonIntercept } from './greeting-tools-popup.js';
-import { initGreetingSelector } from './greeting-selector.js';
-import { initSettings, injectSettingsUI } from './settings.js';
+import { setupButtonIntercept } from './src/popup.js';
+import { initGreetingSelector } from './src/selector.js';
+import { initSettings, injectSettingsUI } from './src/settings.js';
 import { Popup } from '/scripts/popup.js';
 import { t } from '/scripts/i18n.js';
 import { disableExtension } from '/scripts/extensions.js';
