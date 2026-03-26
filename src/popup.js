@@ -11,6 +11,8 @@ import { greetingToolsSettings } from './settings.js';
 import {
     generateGreetingFlow,
     generateTitleAndDescription,
+    textContainsNames,
+    replaceNamesWithMacros,
 } from './generator.js';
 
 /** @typedef {import('./data.js').GreetingToolsData} GreetingToolsData */
@@ -27,6 +29,17 @@ import {
 /**
  * @typedef {Object} OpenPopupOptions
  * @property {number} [highlightSwipeIndex] - Swipe index to highlight (0 = main, 1+ = alternate)
+ */
+
+/**
+ * Uniform context for operating on any greeting type (main, alternate, or temp).
+ * Returned by {@link GreetingToolsPopup#resolveGreetingContext} to eliminate type-branching in handlers.
+ * @typedef {Object} GreetingContext
+ * @property {GreetingEditorState} state - The greeting state
+ * @property {'main' | 'alt' | 'temp'} type - The greeting type
+ * @property {() => void} syncContent - Syncs content changes to the backing data store
+ * @property {() => void | Promise<void>} save - Persists metadata changes
+ * @property {(list?: HTMLElement) => void} refreshUI - Refreshes the UI after state changes
  */
 
 /**
@@ -58,6 +71,9 @@ export class GreetingToolsPopup {
     /** @type {() => Promise<void>} */
     #saveDebounced;
 
+    /** @type {(block: HTMLElement, content: string) => void} */
+    #checkReplaceNamesDebounced;
+
     /** @type {number | undefined} */
     #highlightSwipeIndex;
 
@@ -82,6 +98,10 @@ export class GreetingToolsPopup {
         this.#chid = chid;
         this.#highlightSwipeIndex = options.highlightSwipeIndex;
         this.#saveDebounced = /** @type {() => Promise<void>} */ (debounce(() => this.#saveAllMetadata(), debounce_timeout.relaxed));
+        this.#checkReplaceNamesDebounced = /** @type {(block: HTMLElement, content: string) => void} */ (debounce(
+            (/** @type {HTMLElement} */ block, /** @type {string} */ content) => this.#updateReplaceNamesButton(block, content),
+            debounce_timeout.short,
+        ));
     }
 
     /**
@@ -365,7 +385,8 @@ export class GreetingToolsPopup {
     }
 
     /**
-     * Saves temp greeting metadata changes (title/description) back to chat metadata.
+     * Saves temp greeting state changes back to chat metadata.
+     * Persists title, description, and content from the current temp states.
      * @returns {Promise<void>}
      */
     async #saveTempMetadata() {
@@ -377,6 +398,7 @@ export class GreetingToolsPopup {
                         ...data,
                         title: tempState.title,
                         description: tempState.description,
+                        content: tempState.content,
                     });
                     break;
                 }
@@ -547,13 +569,13 @@ export class GreetingToolsPopup {
         const block = list.querySelector(`.greeting-tools-block[data-greeting-id="${greetingId}"]`);
         if (!(block instanceof HTMLElement)) return;
 
-        const isTemp = block.dataset.tempGreeting === 'true';
-        const states = isTemp ? this.#tempStates : this.#altStates;
-        const state = states.find(s => s.id === greetingId);
-        if (!state) return;
+        const ctx = this.#resolveGreetingContext(greetingId);
+        if (!ctx) return;
 
-        const index = states.indexOf(state);
-        this.#updateBlockTitle(block, state, { index, isTemp });
+        const isTemp = ctx.type === 'temp';
+        const states = isTemp ? this.#tempStates : this.#altStates;
+        const index = states.indexOf(ctx.state);
+        this.#updateBlockTitle(block, ctx.state, { index, isTemp });
     }
 
     /**
@@ -657,6 +679,25 @@ export class GreetingToolsPopup {
             });
         }
 
+        // Replace names button
+        const replaceNamesBtn = block.querySelector('.greeting-tools-replace-names');
+        if (replaceNamesBtn) {
+            replaceNamesBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!this.#mainState) return;
+                this.#handleReplaceNames(this.#mainState.id, block);
+            });
+        }
+
+        // Check replace-names button visibility on open and on textarea blur
+        this.#updateReplaceNamesButton(block, this.#mainState.content);
+        if (textarea instanceof HTMLTextAreaElement) {
+            textarea.addEventListener('blur', () => {
+                this.#checkReplaceNamesDebounced(block, textarea.value);
+            });
+        }
+
         // Move up button - disabled (greyed out) for main greeting
         const moveUpBtn = block.querySelector('.greeting-tools-move-up');
         if (moveUpBtn instanceof HTMLElement) {
@@ -737,67 +778,62 @@ export class GreetingToolsPopup {
                 maximizeBtn.setAttribute('data-for', textareaId);
             }
 
-            // Update content on change (not for temp greetings - they're read-only)
-            if (!isTemp) {
-                textarea.addEventListener('input', () => {
-                    const stateIndex = this.#altStates.findIndex(s => s.id === state.id);
-                    if (stateIndex !== -1) {
-                        this.#altStates[stateIndex].content = textarea.value;
-                        this.#altStates[stateIndex].contentHash = getStringHash(textarea.value);
-                        this.#syncGreetingsToCharacter();
-                        this.#saveDebounced();
-                    }
-                });
-            }
+            // Update content on change (works for all greeting types via GreetingContext)
+            textarea.addEventListener('input', () => {
+                const ctx = this.#resolveGreetingContext(state.id);
+                if (!ctx) return;
+                ctx.state.content = textarea.value;
+                ctx.state.contentHash = getStringHash(textarea.value);
+                ctx.syncContent();
+                ctx.save();
+            });
         }
 
-        // Edit title button
+        // Edit title button (works for all greeting types via GreetingContext)
         const editTitleBtn = block.querySelector('.greeting-tools-edit-title');
         if (editTitleBtn instanceof HTMLElement) {
-            if (isTemp) {
-                editTitleBtn.addEventListener('click', async (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const clickedState = this.#tempStates.find(s => s.id === state.id);
-                    if (!clickedState) return;
-                    await this.#showEditTitlePopup(clickedState, () => {
-                        this.#refreshBlockTitle(clickedState.id, list);
-                        this.#saveTempMetadata();
-                    });
+            editTitleBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const ctx = this.#resolveGreetingContext(state.id);
+                if (!ctx) return;
+                await this.#showEditTitlePopup(ctx.state, () => {
+                    ctx.refreshUI(list);
+                    ctx.save();
                 });
-            } else {
-                editTitleBtn.addEventListener('click', async (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const clickedState = this.#altStates.find(s => s.id === state.id);
-                    if (!clickedState) return;
-                    await this.#showEditTitlePopup(clickedState, () => {
-                        this.#refreshAllAltBlocks(list);
-                        this.#saveDebounced();
-                    });
-                });
-            }
+            });
         }
 
-        // Auto-fill button
+        // Auto-fill button (works for all greeting types via GreetingContext)
         const autoFillBtn = block.querySelector('.greeting-tools-auto-fill');
         if (autoFillBtn instanceof HTMLElement) {
             autoFillBtn.addEventListener('click', async (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                const clickedState = isTemp
-                    ? this.#tempStates.find(s => s.id === state.id)
-                    : this.#altStates.find(s => s.id === state.id);
-                if (!clickedState) return;
-                await this.#handleAutoFill(clickedState, () => {
-                    if (isTemp) {
-                        this.#refreshBlockTitle(clickedState.id, list);
-                        this.#saveTempMetadata();
-                    } else {
-                        this.#refreshAllAltBlocks(list);
-                        this.#saveDebounced();
-                    }
+                const ctx = this.#resolveGreetingContext(state.id);
+                if (!ctx) return;
+                await this.#handleAutoFill(ctx.state, () => {
+                    ctx.refreshUI(list);
+                    ctx.save();
                 });
+            });
+        }
+
+        // Replace names button (works for all greeting types via GreetingContext)
+        const replaceNamesBtn = block.querySelector('.greeting-tools-replace-names');
+        if (replaceNamesBtn) {
+            replaceNamesBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.#handleReplaceNames(state.id, block);
+            });
+        }
+
+        // Check replace-names button visibility on open and on textarea blur
+        this.#updateReplaceNamesButton(block, state.content);
+        if (textarea instanceof HTMLTextAreaElement) {
+            textarea.addEventListener('blur', () => {
+                this.#checkReplaceNamesDebounced(block, textarea.value);
             });
         }
 
@@ -1219,6 +1255,107 @@ export class GreetingToolsPopup {
             }
             return false;
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Greeting Context (uniform abstraction over main / alt / temp)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Resolves a greeting ID to a uniform {@link GreetingContext}.
+     * Handlers can call `ctx.syncContent()` and `ctx.save()` without branching on greeting type.
+     * @param {string} greetingId - The greeting ID to look up
+     * @returns {GreetingContext | null} Context object or null if not found
+     */
+    #resolveGreetingContext(greetingId) {
+        if (this.#mainState?.id === greetingId) {
+            const state = this.#mainState;
+            return {
+                state,
+                type: 'main',
+                syncContent: () => this.#setMainGreeting(state.content),
+                save: () => this.#saveDebounced(),
+                refreshUI: () => this.#renderMainGreeting(),
+            };
+        }
+
+        const altState = this.#altStates.find(s => s.id === greetingId);
+        if (altState) {
+            return {
+                state: altState,
+                type: 'alt',
+                syncContent: () => this.#syncGreetingsToCharacter(),
+                save: () => this.#saveDebounced(),
+                refreshUI: (list) => this.#refreshAllAltBlocks(list),
+            };
+        }
+
+        const tempState = this.#tempStates.find(s => s.id === greetingId);
+        if (tempState) {
+            return {
+                state: tempState,
+                type: 'temp',
+                syncContent: () => this.#syncTempGreetingContent(tempState),
+                save: () => this.#saveTempMetadata(),
+                refreshUI: (list) => this.#refreshBlockTitle(tempState.id, list),
+            };
+        }
+
+        return null;
+    }
+
+    /**
+     * Syncs a temp greeting's content to the chat swipe array.
+     * @param {GreetingEditorState} state - The temp greeting state
+     */
+    #syncTempGreetingContent(state) {
+        const swipeIndex = this.#findTempGreetingSwipeIndex(state.id);
+        if (swipeIndex !== undefined && chat?.[0]?.swipes) {
+            chat[0].swipes[swipeIndex] = state.content;
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Replace Names
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Updates the visibility of the "Replace names with macros" button for a greeting block.
+     * Shows the button only if the greeting content contains character or user names.
+     * @param {HTMLElement} block - The greeting block element
+     * @param {string} content - The current greeting content
+     */
+    #updateReplaceNamesButton(block, content) {
+        const btn = block.querySelector('.greeting-tools-replace-names');
+        if (btn instanceof HTMLElement) {
+            btn.style.display = textContainsNames(content) ? '' : 'none';
+        }
+    }
+
+    /**
+     * Handles clicking the "Replace names with macros" button.
+     * Uses {@link GreetingContext} to handle any greeting type uniformly.
+     * @param {string} greetingId - The greeting ID to operate on
+     * @param {HTMLElement} block - The greeting block element
+     */
+    #handleReplaceNames(greetingId, block) {
+        const ctx = this.#resolveGreetingContext(greetingId);
+        if (!ctx) return;
+
+        const textarea = block.querySelector('.greeting-tools-textarea');
+        if (!(textarea instanceof HTMLTextAreaElement)) return;
+
+        const replaced = replaceNamesWithMacros(textarea.value);
+        if (replaced === textarea.value) return;
+
+        textarea.value = replaced;
+        ctx.state.content = replaced;
+        ctx.state.contentHash = getStringHash(replaced);
+        ctx.syncContent();
+        ctx.save();
+
+        this.#updateReplaceNamesButton(block, replaced);
+        toastr.success(t`Replaced names with macros`);
     }
 
     /**

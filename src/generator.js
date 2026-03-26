@@ -67,29 +67,38 @@ export async function showGenerateGreetingPopup({ title: popupTitle } = {}) {
 }
 
 /**
- * Replaces character and user names with macros in the given text.
+ * Checks whether the given text contains the character or user name as whole words (case-sensitive).
+ * @param {string} text - The text to check
+ * @returns {boolean} True if the text contains either name
+ */
+export function textContainsNames(text) {
+    if (!text) return false;
+
+    const charName = characters[this_chid]?.name || name2 || '';
+    const userName = name1 || '';
+
+    if (charName && new RegExp(`\\b${escapeRegex(charName)}\\b`).test(text)) return true;
+    if (userName && new RegExp(`\\b${escapeRegex(userName)}\\b`).test(text)) return true;
+
+    return false;
+}
+
+/**
+ * Replaces character and user names with macros in the given text (case-sensitive, whole word).
  * @param {string} text - The text to process
  * @returns {string} Text with names replaced by macros
  */
 export function replaceNamesWithMacros(text) {
-    const character = characters[this_chid];
-    if (!character) return text;
-
-    const charName = character.name || name2;
-    const userName = name1;
+    const charName = characters[this_chid]?.name || name2 || '';
+    const userName = name1 || '';    if (!charName && !userName) return text;
 
     let result = text;
 
-    // Replace character name with {{char}} (case-insensitive, whole word)
     if (charName) {
-        const charRegex = new RegExp(`\\b${escapeRegex(charName)}\\b`, 'gi');
-        result = result.replace(charRegex, '{{char}}');
+        result = result.replace(new RegExp(`\\b${escapeRegex(charName)}\\b`, 'g'), '{{char}}');
     }
-
-    // Replace user name with {{user}} (case-insensitive, whole word)
     if (userName) {
-        const userRegex = new RegExp(`\\b${escapeRegex(userName)}\\b`, 'gi');
-        result = result.replace(userRegex, '{{user}}');
+        result = result.replace(new RegExp(`\\b${escapeRegex(userName)}\\b`, 'g'), '{{user}}');
     }
 
     return result;

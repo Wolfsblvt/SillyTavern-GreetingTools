@@ -132,7 +132,7 @@ This list mostly functions as a personal reminder of what still needs to be done
 - [ ] Add init/success state of extension, so functions only "work" if the extension was initialized successfully
 - [x] Make temp greeting title/desc editable and generateable
 - [x] Refactoring / code cleanup (move functions, rename scripts, for separation of concerns) + Move most scripts into subfolder (keeping main repo page clean)
-- [ ] "Replace names with macros" button in the popup for manual replacing
+- [x] "Replace names with macros" button in the popup for manual replacing
 - [ ] "Expand" button in the in-chat widget to see full description
 - [ ] Store extension version in extension metadata - on update check/ask if default prompts should be updated
 
