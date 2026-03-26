@@ -1,4 +1,4 @@
-import { setupButtonIntercept } from './greeting-tools.js';
+import { setupButtonIntercept } from './greeting-tools-popup.js';
 import { initGreetingSelector } from './greeting-selector.js';
 import { initSettings, injectSettingsUI } from './settings.js';
 import { Popup } from '/scripts/popup.js';

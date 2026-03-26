@@ -3,74 +3,13 @@
  * Used by both the Greeting Tools popup and the inline greeting selector.
  */
 
-import { characters, generateRaw, substituteParams, name1, name2, this_chid, chat_metadata, saveChatConditional } from '../../../../script.js';
+import { characters, generateRaw, substituteParams, name1, name2, this_chid } from '../../../../script.js';
 import { Popup, POPUP_TYPE } from '../../../popup.js';
 import { t } from '../../../i18n.js';
 import { escapeRegex } from '../../../utils.js';
 import { greetingToolsSettings } from './settings.js';
-import { getGreetingToolsData, generateGreetingId } from './greeting-tools.js';
+import { getGreetingToolsData, generateGreetingId } from './greeting-data.js';
 import { loader } from '/scripts/action-loader.js';
-import { EXTENSION_NAME } from './index.js';
-
-/**
- * @typedef {Object} TempGreetingData
- * @property {string} id - Unique greeting ID
- * @property {string} title - Display title
- * @property {string} description - Description
- * @property {string} content - Greeting text content
- * @property {number} swipeIndex - Index in the swipes array
- */
-
-/**
- * Gets temp greetings from chat metadata.
- * @returns {Map<number, TempGreetingData>} Map of swipe index to temp greeting data
- */
-export function getTempGreetings() {
-    const stored = chat_metadata[EXTENSION_NAME]?.tempGreetings;
-    if (!stored || typeof stored !== 'object') {
-        return new Map();
-    }
-    // Convert object to Map (JSON doesn't preserve Map)
-    return new Map(Object.entries(stored).map(([k, v]) => [Number(k), v]));
-}
-
-/**
- * Saves temp greetings to chat metadata.
- * @param {Map<number, TempGreetingData>} tempGreetings - Map of temp greetings
- * @param {object} [options] - Options
- * @param {boolean} [options.saveChat=true] - Whether to save the chat
- */
-export async function saveTempGreetings(tempGreetings, { saveChat = true } = {}) {
-    if (!chat_metadata[EXTENSION_NAME]) {
-        chat_metadata[EXTENSION_NAME] = {};
-    }
-    // Convert Map to object for JSON serialization
-    chat_metadata[EXTENSION_NAME].tempGreetings = Object.fromEntries(tempGreetings);
-    if (saveChat) {
-        await saveChatConditional();
-    }
-}
-
-/**
- * Adds a temp greeting to chat metadata.
- * @param {number} swipeIndex - Swipe index
- * @param {TempGreetingData} data - Temp greeting data
- */
-export async function addTempGreeting(swipeIndex, data) {
-    const tempGreetings = getTempGreetings();
-    tempGreetings.set(swipeIndex, { ...data, swipeIndex });
-    await saveTempGreetings(tempGreetings);
-}
-
-/**
- * Removes a temp greeting from chat metadata.
- * @param {number} swipeIndex - Swipe index to remove
- */
-export async function removeTempGreeting(swipeIndex) {
-    const tempGreetings = getTempGreetings();
-    tempGreetings.delete(swipeIndex);
-    await saveTempGreetings(tempGreetings);
-}
 
 /** Default placeholder text for the generate greeting popup */
 const GENERATE_GREETING_PLACEHOLDER = t`Describe what kind of greeting scenario you want to generate. Leave empty for a general new greeting based on the character.`;
@@ -250,9 +189,15 @@ export async function generateGreetingContent(customPrompt, { loaderMessage, exi
  * @param {string} greetingContent - The greeting content to generate title/desc for
  * @param {object} [options] - Generation options
  * @param {string} [options.existingTitles] - Already formatted existing titles string
+ * @param {boolean} [options.showLoader=true] - Whether to show the blocking loader
  * @returns {Promise<{ title: string, description: string } | null>} Generated title/desc or null on failure
  */
-export async function generateTitleAndDescription(greetingContent, { existingTitles } = {}) {
+export async function generateTitleAndDescription(greetingContent, { existingTitles, showLoader = true } = {}) {
+    if (!greetingContent || greetingContent.trim().length === 0) {
+        toastr.warning(t`Cannot generate without greeting content`);
+        return null;
+    }
+
     const character = characters[this_chid];
     if (!character) return null;
 
@@ -266,11 +211,11 @@ export async function generateTitleAndDescription(greetingContent, { existingTit
     };
 
     const systemPrompt = substituteParams(greetingToolsSettings.generateSystemPrompt, undefined, undefined, dynamicMacros);
-    const prompt = t`Generate a title and description for this greeting:\n\n${greetingContent}`;
+    const prompt = greetingContent;
 
-    const titleLoader = loader.show({
-        message: t`Generating title and description...`,
-    });
+    const genLoader = showLoader
+        ? loader.show({ message: t`Generating title and description...` })
+        : null;
 
     try {
         const response = await generateRaw({
@@ -279,28 +224,52 @@ export async function generateTitleAndDescription(greetingContent, { existingTit
             instructOverride: true,
         });
 
+        // Log full response for debugging
+        console.info('[GreetingTools] LLM response for title/description', { text: response });
+
         if (!response || typeof response !== 'string') {
+            toastr.error(t`No response from LLM`);
             return null;
         }
 
-        // Parse response - expect ```title\n...\n``` and ```description\n...\n```
-        const titleMatch = response.match(/```title\s*\n([\s\S]*?)\n```/i);
-        const descMatch = response.match(/```description\s*\n([\s\S]*?)\n```/i);
+        // Parse code blocks from response
+        const titleMatch = response.match(/```title\s*\n?([\s\S]*?)```/i);
+        const descMatch = response.match(/```description\s*\n?([\s\S]*?)```/i);
 
-        const title = titleMatch?.[1]?.trim() || '';
-        const description = descMatch?.[1]?.trim() || '';
+        let title = titleMatch?.[1]?.trim() ?? '';
+        let description = descMatch?.[1]?.trim() ?? '';
+
+        // Fallback: if no code blocks, try to extract from plain text
+        if (!title && !description) {
+            const lines = response.trim().split('\n').filter(l => l.trim());
+            if (lines.length >= 1) {
+                // First non-empty line as title, rest as description
+                title = lines[0].replace(/^(title:|#|\*)+\s*/i, '').trim();
+                if (lines.length >= 2) {
+                    description = lines.slice(1).join(' ').replace(/^(description:|#|\*)+\s*/i, '').trim();
+                }
+                console.log('[GreetingTools] Used fallback parsing for title/description response');
+            }
+        }
 
         if (!title) {
-            console.warn('[GreetingTools] Could not parse title from response');
+            toastr.error(t`Could not parse title from LLM response`);
             return null;
         }
 
         return { title, description };
     } catch (error) {
-        console.error('[GreetingTools] Failed to generate title/description:', error);
+        // Don't show error toast for intentional user aborts
+        const isAborted = error?.name === 'AbortError' || error?.message?.includes('Cancelled');
+        if (isAborted) {
+            console.log('[GreetingTools] Title/description generation was cancelled by user');
+        } else {
+            console.error('[GreetingTools] Failed to generate title/description:', error);
+            toastr.error(t`Generation failed: ${error.message}`);
+        }
         return null;
     } finally {
-        await titleLoader.hide();
+        await genLoader?.hide();
     }
 }
 
