@@ -1,4 +1,4 @@
-import { characters, menu_type, create_save, createOrEditCharacter, chat, swipe, eventSource, event_types } from '../../../../../script.js';
+import { characters, menu_type, create_save, createOrEditCharacter, chat, chat_metadata, swipe, eventSource, event_types } from '../../../../../script.js';
 import { SWIPE_DIRECTION } from '../../../../constants.js';
 import { renderExtensionTemplateAsync } from '../../../../extensions.js';
 import { Popup, POPUP_TYPE, POPUP_RESULT, PopupUtils } from '../../../../popup.js';
@@ -462,6 +462,17 @@ export class GreetingToolsPopup {
     }
 
     /**
+     * Shows or hides the temp section header based on temp greetings count.
+     * @param {HTMLElement} list
+     */
+    #updateTempSectionVisibility(list) {
+        const tempHeader = list.querySelector('.greeting-tools-temp-header');
+        if (tempHeader instanceof HTMLElement) {
+            tempHeader.style.display = this.#tempStates.length > 0 ? '' : 'none';
+        }
+    }
+
+    /**
      * Updates the title and description display for a greeting block.
      * @param {HTMLElement} block
      * @param {GreetingEditorState} state
@@ -583,12 +594,15 @@ export class GreetingToolsPopup {
      * @param {HTMLElement} list
      */
     #updateMoveButtonStates(list) {
-        const blocks = list.querySelectorAll('.greeting-tools-block');
+        const altContainer = list.querySelector('.greeting-tools-alt-container');
+        if (!altContainer) return;
+
+        const blocks = altContainer.querySelectorAll('.greeting-tools-block');
         blocks.forEach((block, index) => {
             if (!(block instanceof HTMLElement)) return;
             const moveDownBtn = block.querySelector('.greeting-tools-move-down');
             if (moveDownBtn instanceof HTMLElement) {
-                // Disable move-down on last item
+                // Disable move-down on last alt item
                 if (index === blocks.length - 1) {
                     moveDownBtn.classList.add('greeting-tools-btn-disabled');
                 } else {
@@ -979,21 +993,27 @@ export class GreetingToolsPopup {
         // Capture current toggle states before re-rendering
         this.#captureToggleStates();
 
-        // Clear existing alternate blocks (but keep the main greeting and hint)
-        const blocks = list.querySelectorAll('.greeting-tools-block:not(.greeting-tools-main-block)');
-        blocks.forEach(block => block.remove());
+        const altContainer = list.querySelector('.greeting-tools-alt-container');
+        const tempContainer = list.querySelector('.greeting-tools-temp-container');
 
-        // Render all saved greetings
+        // Clear existing blocks in both containers
+        if (altContainer) altContainer.innerHTML = '';
+        if (tempContainer) tempContainer.innerHTML = '';
+
+        // Render all saved greetings into alt container
         for (let i = 0; i < this.#altStates.length; i++) {
             const block = this.#createGreetingBlock(this.#altStates[i], i, list);
-            list.appendChild(block);
+            altContainer?.appendChild(block);
         }
 
-        // Render temp greetings with special marker
+        // Render temp greetings into temp container
         for (let i = 0; i < this.#tempStates.length; i++) {
             const block = this.#createGreetingBlock(this.#tempStates[i], i, list, { isTemp: true });
-            list.appendChild(block);
+            tempContainer?.appendChild(block);
         }
+
+        // Show/hide temp section header
+        this.#updateTempSectionVisibility(list);
 
         // Update move button states for last item
         this.#updateMoveButtonStates(list);
@@ -1529,17 +1549,20 @@ export class GreetingToolsPopup {
         this.#syncGreetingsToCharacter();
         this.#saveDebounced();
 
-        // Append the new block - force open for manually added empty greetings
+        // Append the new block to the alt container - force open for manually added empty greetings
         const block = this.#createGreetingBlock(newState, this.#altStates.length - 1, list, { forceOpen: true });
-        list.appendChild(block);
+        const altContainer = list.querySelector('.greeting-tools-alt-container');
+        if (altContainer) {
+            altContainer.appendChild(block);
+        }
 
         // Update UI states
         this.#updateMoveButtonStates(list);
         this.#updateHintVisibility(list);
         this.#updateInfoLine();
 
-        // Scroll to bottom
-        list.scrollTop = list.scrollHeight;
+        // Scroll to the new block
+        block.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
         // Focus the textarea
         const textarea = block.querySelector('.greeting-tools-textarea');
@@ -1602,17 +1625,20 @@ export class GreetingToolsPopup {
         this.#syncGreetingsToCharacter();
         this.#saveDebounced();
 
-        // Append the new block
+        // Append the new block to the alt container
         block = this.#createGreetingBlock(newState, this.#altStates.length - 1, list);
-        list.appendChild(block);
+        const altContainer = list.querySelector('.greeting-tools-alt-container');
+        if (altContainer) {
+            altContainer.appendChild(block);
+        }
 
         // Update UI states
         this.#updateMoveButtonStates(list);
         this.#updateHintVisibility(list);
         this.#updateInfoLine();
 
-        // Scroll to bottom to show new greeting
-        list.scrollTop = list.scrollHeight;
+        // Scroll to the new block
+        block.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
         // Update button count
         updateButtonAppearance(this.#chid);
@@ -1653,6 +1679,14 @@ export class GreetingToolsPopup {
             const hasTempGreetings = tempGreetings.size > 0;
 
             await createOrEditCharacter();
+
+            // Warn user if chat is tainted — greeting changes won't be reflected in the first message
+            if (chat_metadata?.tainted && chat?.length === 1) {
+                toastr.info(
+                    t`The first message was edited, so greeting changes won't be reflected until you start a new chat.`,
+                    t`Chat is tainted`,
+                );
+            }
 
             // Re-inject temp greetings into first message swipes after re-render
             if (hasTempGreetings && chat?.[0]) {
