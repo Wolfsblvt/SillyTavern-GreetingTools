@@ -270,10 +270,11 @@ function updateSelectorUI(selector, { rebuildDropdown = false } = {}) {
         toggleGreetingDropdown(selector, false);
     }
 
-    // Update swipe info (only show when changeable, include temp greetings count)
+    // Update swipe info (only show when changeable, use actual swipe count from first message)
     const swipeInfoEl = selector.querySelector('.greeting-selector-swipe-info');
     if (swipeInfoEl) {
-        const totalCount = options.length + tempGreetings.size;
+        const actualSwipeCount = chat?.[0]?.swipes?.length;
+        const totalCount = actualSwipeCount ?? (options.length + tempGreetings.size);
         swipeInfoEl.textContent = isChangeable ? `${currentIndex + 1} / ${totalCount}` : '';
     }
 
@@ -298,8 +299,12 @@ function updateSelectorUI(selector, { rebuildDropdown = false } = {}) {
     // Sort by swipe index
     allOptions.sort((a, b) => a.swipeIndex - b.swipeIndex);
 
-    // Cache all options for fuzzy search
-    cachedOptions = allOptions;
+    // Filter to only include options with valid swipe indices (prevents stale entries on tainted chats)
+    const maxSwipeIndex = (chat?.[0]?.swipes?.length ?? allOptions.length) - 1;
+    const validOptions = allOptions.filter(opt => opt.swipeIndex <= maxSwipeIndex);
+
+    // Cache valid options for fuzzy search
+    cachedOptions = validOptions;
 
     // Setup dropdown if changeable
     if (isChangeable) {
@@ -311,7 +316,7 @@ function updateSelectorUI(selector, { rebuildDropdown = false } = {}) {
             // Rebuild options if needed
             if (needsInit || rebuildDropdown) {
                 dropdown.innerHTML = '';
-                for (const opt of allOptions) {
+                for (const opt of validOptions) {
                     const optionEl = document.createElement('option');
                     optionEl.value = String(opt.swipeIndex);
                     optionEl.textContent = opt.title;
