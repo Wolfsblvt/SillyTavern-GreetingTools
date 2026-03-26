@@ -1,4 +1,4 @@
-import { characters, menu_type, create_save, createOrEditCharacter, generateRaw, substituteParams, chat, swipe } from '../../../../script.js';
+import { characters, menu_type, create_save, createOrEditCharacter, chat, swipe, eventSource, event_types } from '../../../../script.js';
 import { SWIPE_DIRECTION } from '../../../constants.js';
 import { renderExtensionTemplateAsync } from '../../../extensions.js';
 import { Popup, POPUP_TYPE, POPUP_RESULT, PopupUtils } from '../../../popup.js';
@@ -6,17 +6,14 @@ import { t } from '../../../i18n.js';
 import { debounce, flashHighlight, getStringHash } from '../../../utils.js';
 import { debounce_timeout } from '../../../constants.js';
 import { EXTENSION_NAME } from './index.js';
-import { findGreetingMetadata, generateGreetingId, getGreetingToolsData, saveGreetingToolsData, updateButtonAppearance, createTempMarker } from './greeting-tools.js';
-import { loader } from '../../../action-loader.js';
+import { findGreetingMetadata, generateGreetingId, getGreetingToolsData, saveGreetingToolsData, updateButtonAppearance, createTempMarker, getTempGreetings, saveTempGreetings, removeTempGreeting } from './greeting-data.js';
 import { greetingToolsSettings } from './settings.js';
 import {
     generateGreetingFlow,
-    getTempGreetings,
-    saveTempGreetings,
-    removeTempGreeting,
+    generateTitleAndDescription,
 } from './greeting-generator.js';
 
-/** @typedef {import('./greeting-tools.js').GreetingToolsData} GreetingToolsData */
+/** @typedef {import('./greeting-data.js').GreetingToolsData} GreetingToolsData */
 
 /**
  * @typedef {Object} GreetingEditorState
@@ -530,7 +527,7 @@ export class GreetingToolsPopup {
      * @param {HTMLElement} list
      */
     #refreshAllAltBlocks(list) {
-        const blocks = list.querySelectorAll('.greeting-tools-block:not(.greeting-tools-main-block)');
+        const blocks = list.querySelectorAll('.greeting-tools-block:not(.greeting-tools-main-block):not(.greeting-tools-temp-block)');
         blocks.forEach((block, index) => {
             if (!(block instanceof HTMLElement)) return;
             const state = this.#altStates[index];
@@ -539,6 +536,24 @@ export class GreetingToolsPopup {
                 this.#updateBlockTitle(block, state, { index });
             }
         });
+    }
+
+    /**
+     * Refreshes the title and description display for a single greeting block.
+     * @param {string} greetingId - The greeting ID to refresh
+     * @param {HTMLElement} list - The greetings list element
+     */
+    #refreshBlockTitle(greetingId, list) {
+        const block = list.querySelector(`.greeting-tools-block[data-greeting-id="${greetingId}"]`);
+        if (!(block instanceof HTMLElement)) return;
+
+        const isTemp = block.dataset.tempGreeting === 'true';
+        const states = isTemp ? this.#tempStates : this.#altStates;
+        const state = states.find(s => s.id === greetingId);
+        if (!state) return;
+
+        const index = states.indexOf(state);
+        this.#updateBlockTitle(block, state, { index, isTemp });
     }
 
     /**
@@ -621,7 +636,10 @@ export class GreetingToolsPopup {
                 e.preventDefault();
                 e.stopPropagation();
                 if (!this.#mainState) return;
-                await this.#showEditTitlePopup(this.#mainState, () => this.#renderMainGreeting());
+                await this.#showEditTitlePopup(this.#mainState, () => {
+                    this.#renderMainGreeting();
+                    this.#saveDebounced();
+                });
             });
         }
 
@@ -632,7 +650,10 @@ export class GreetingToolsPopup {
                 e.preventDefault();
                 e.stopPropagation();
                 if (!this.#mainState) return;
-                await this.#handleAutoFill(this.#mainState, () => this.#renderMainGreeting());
+                await this.#handleAutoFill(this.#mainState, () => {
+                    this.#renderMainGreeting();
+                    this.#saveDebounced();
+                });
             });
         }
 
@@ -740,7 +761,7 @@ export class GreetingToolsPopup {
                     const clickedState = this.#tempStates.find(s => s.id === state.id);
                     if (!clickedState) return;
                     await this.#showEditTitlePopup(clickedState, () => {
-                        this.#renderGreetingsList(list);
+                        this.#refreshBlockTitle(clickedState.id, list);
                         this.#saveTempMetadata();
                     });
                 });
@@ -750,7 +771,10 @@ export class GreetingToolsPopup {
                     e.stopPropagation();
                     const clickedState = this.#altStates.find(s => s.id === state.id);
                     if (!clickedState) return;
-                    await this.#showEditTitlePopup(clickedState, () => this.#refreshAllAltBlocks(list));
+                    await this.#showEditTitlePopup(clickedState, () => {
+                        this.#refreshAllAltBlocks(list);
+                        this.#saveDebounced();
+                    });
                 });
             }
         }
@@ -767,10 +791,11 @@ export class GreetingToolsPopup {
                 if (!clickedState) return;
                 await this.#handleAutoFill(clickedState, () => {
                     if (isTemp) {
-                        this.#renderGreetingsList(list);
+                        this.#refreshBlockTitle(clickedState.id, list);
                         this.#saveTempMetadata();
                     } else {
                         this.#refreshAllAltBlocks(list);
+                        this.#saveDebounced();
                     }
                 });
             });
@@ -1058,89 +1083,6 @@ export class GreetingToolsPopup {
     }
 
     /**
-     * Generates title and description using LLM.
-     * @param {GreetingEditorState} state - The greeting state
-     * @param {object} [options={}] - Generation options
-     * @param {boolean} [options.showLoader=true] - Whether to show the blocking loader (false for chained generation)
-     * @returns {Promise<{title: string, description: string} | null>}
-     */
-    async #generateTitleAndDescription(state, { showLoader = true } = {}) {
-        if (!state.content || state.content.trim().length === 0) {
-            toastr.warning(t`Cannot generate without greeting content`);
-            return null;
-        }
-
-        // Build dynamic macros for this generation
-        const existingTitles = this.#getExistingTitles(state);
-        const dynamicMacros = { existingTitles };
-
-        // Substitute macros in system prompt (uses customizable prompt from settings)
-        const systemPrompt = substituteParams(greetingToolsSettings.generateSystemPrompt, undefined, undefined, dynamicMacros);
-
-        // Main prompt is just the greeting content
-        const prompt = state.content;
-
-        const genLoader = showLoader
-            ? loader.show({ message: t`Generating title and description...` })
-            : null;
-
-        try {
-            const response = await generateRaw({
-                prompt,
-                systemPrompt,
-                instructOverride: true,
-            });
-
-            // Log full response for debugging
-            console.info('[GreetingTools] LLM response', { text: response });
-
-            if (!response || typeof response !== 'string') {
-                toastr.error(t`No response from LLM`);
-                return null;
-            }
-
-            // Parse code blocks from response
-            const titleMatch = response.match(/```title\s*\n?([\s\S]*?)```/i);
-            const descMatch = response.match(/```description\s*\n?([\s\S]*?)```/i);
-
-            let title = titleMatch?.[1]?.trim() ?? '';
-            let description = descMatch?.[1]?.trim() ?? '';
-
-            // Fallback: if no code blocks, try to extract from plain text
-            if (!title && !description) {
-                const lines = response.trim().split('\n').filter(l => l.trim());
-                if (lines.length >= 1) {
-                    // First non-empty line as title, rest as description
-                    title = lines[0].replace(/^(title:|#|\*)+\s*/i, '').trim();
-                    if (lines.length >= 2) {
-                        description = lines.slice(1).join(' ').replace(/^(description:|#|\*)+\s*/i, '').trim();
-                    }
-                    console.log('[GreetingTools] Used fallback parsing for response');
-                }
-            }
-
-            if (!title) {
-                toastr.error(t`Could not parse title from LLM response`);
-                return null;
-            }
-
-            return { title, description };
-        } catch (error) {
-            // Don't show error toast for intentional user aborts
-            const isAborted = error?.name === 'AbortError' || error?.message?.includes('Cancelled');
-            if (isAborted) {
-                console.log('[GreetingTools] Generation was cancelled by user');
-            } else {
-                console.error('[GreetingTools] Generation error:', error);
-                toastr.error(t`Generation failed: ${error.message}`);
-            }
-            return null;
-        } finally {
-            await genLoader?.hide();
-        }
-    }
-
-    /**
      * Truncates text with ellipsis if exceeding max length.
      * @param {string} text - The text to truncate
      * @param {number} maxLength - Maximum length
@@ -1194,10 +1136,9 @@ export class GreetingToolsPopup {
      * @param {object} [options={}] - Options for the auto-fill
      * @param {HTMLTextAreaElement|null} [options.titleInput=null] - Title input element (if in popup)
      * @param {HTMLTextAreaElement|null} [options.descInput=null] - Description input element (if in popup)
-     * @param {() => void} [options.onSave=null] - Callback after saving (for direct mode)
      * @returns {Promise<boolean>} Whether values were updated
      */
-    async #performAutoFill(state, { titleInput = null, descInput = null, onSave = null } = {}) {
+    async #performAutoFill(state, { titleInput = null, descInput = null } = {}) {
         // Get current values
         const currentTitle = titleInput?.value?.trim() ?? state.title ?? '';
         const currentDesc = (descInput?.value ?? state.description ?? '').trim();
@@ -1211,11 +1152,12 @@ export class GreetingToolsPopup {
             if (!confirmGenerate) return false;
         }
 
-        // Generate
-        const generated = await this.#generateTitleAndDescription(state);
+        // Generate using the shared generator function
+        const existingTitles = this.#getExistingTitles(state);
+        const generated = await generateTitleAndDescription(state.content, { existingTitles });
         if (!generated) return false;
 
-        // Helper to apply values
+        // Helper to apply values to inputs or state
         const applyValues = (/** @type {string} */ title, /** @type {string} */ desc) => {
             if (titleInput) {
                 titleInput.value = title;
@@ -1226,11 +1168,6 @@ export class GreetingToolsPopup {
                 descInput.value = desc;
             } else {
                 state.description = desc;
-            }
-            // If direct mode (no inputs), save immediately
-            if (!titleInput && !descInput && onSave) {
-                onSave();
-                this.#saveAllMetadata();
             }
         };
 
@@ -1291,7 +1228,7 @@ export class GreetingToolsPopup {
      * @param {() => void} onSave - Callback to refresh UI after save
      */
     async #handleAutoFill(state, onSave) {
-        const updated = await this.#performAutoFill(state, { onSave });
+        const updated = await this.#performAutoFill(state);
         if (updated) {
             onSave();
         }
@@ -1342,7 +1279,6 @@ export class GreetingToolsPopup {
             state.title = result.trim();
             state.description = String(popup.inputResults?.get('greeting-description-input') ?? '').trim();
             onSave();
-            this.#saveDebounced();
         }
     }
 
@@ -1624,4 +1560,46 @@ export class GreetingToolsPopup {
         // Refresh button count
         updateButtonAppearance(this.#chid);
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Popup Entry Point & Button Intercept
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Opens the greeting tools popup for a character.
+ * @param {string} chid - Character ID
+ * @param {OpenPopupOptions} [options] - Options object
+ */
+export async function openGreetingToolsPopup(chid, options = {}) {
+    const popup = new GreetingToolsPopup(chid, options);
+    await popup.show();
+}
+
+/**
+ * Sets up the button intercept to replace ST's popup with ours.
+ */
+export function setupButtonIntercept() {
+    updateButtonAppearance();
+
+    // Update button when character changes
+    eventSource.on(event_types.CHAT_CHANGED, () => updateButtonAppearance());
+
+    document.addEventListener('click', (e) => {
+        const target = e.target;
+        if (!(target instanceof Element)) return;
+
+        const button = target.closest('.open_alternate_greetings');
+        if (!button) return;
+
+        e.stopImmediatePropagation();
+        e.preventDefault();
+
+        const chidAttr = $(button).data('chid');
+        const chid = chidAttr !== undefined ? String(chidAttr) : undefined;
+
+        if (chid !== undefined || menu_type === 'create') {
+            openGreetingToolsPopup(chid);
+        }
+    }, true);
 }

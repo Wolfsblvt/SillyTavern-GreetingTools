@@ -5,13 +5,9 @@ import { t } from '../../../i18n.js';
 import { escapeHtml, getStringHash } from '../../../utils.js';
 import { performFuzzySearch } from '../../../power-user.js';
 import { EXTENSION_NAME } from './index.js';
-import { findGreetingMetadata, getGreetingToolsData, openGreetingToolsPopup, saveGreetingToolsData, createTempMarker, updateButtonAppearance } from './greeting-tools.js';
-import {
-    getTempGreetings,
-    addTempGreeting,
-    removeTempGreeting,
-    generateGreetingFlow,
-} from './greeting-generator.js';
+import { findGreetingMetadata, getGreetingToolsData, saveGreetingToolsData, createTempMarker, updateButtonAppearance, getTempGreetings, addTempGreeting, removeTempGreeting } from './greeting-data.js';
+import { openGreetingToolsPopup } from './greeting-tools-popup.js';
+import { generateGreetingFlow } from './greeting-generator.js';
 
 /**
  * @typedef {Object} GreetingOption
