@@ -3,7 +3,7 @@
  * These can be customized via extension settings.
  */
 
-import { translate } from '../../../i18n.js';
+import { translate } from '../../../../i18n.js';
 
 /** System prompt template for greeting title/description generation */
 export const DEFAULT_GENERATE_SYSTEM_PROMPT = translate(`You are helping organize greeting messages for a character named '{{char}}'.

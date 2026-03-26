@@ -1,19 +1,19 @@
-import { characters, menu_type, create_save, createOrEditCharacter, chat, swipe, eventSource, event_types } from '../../../../script.js';
-import { SWIPE_DIRECTION } from '../../../constants.js';
-import { renderExtensionTemplateAsync } from '../../../extensions.js';
-import { Popup, POPUP_TYPE, POPUP_RESULT, PopupUtils } from '../../../popup.js';
-import { t } from '../../../i18n.js';
-import { debounce, flashHighlight, getStringHash } from '../../../utils.js';
-import { debounce_timeout } from '../../../constants.js';
-import { EXTENSION_NAME } from './index.js';
-import { findGreetingMetadata, generateGreetingId, getGreetingToolsData, saveGreetingToolsData, updateButtonAppearance, createTempMarker, getTempGreetings, saveTempGreetings, removeTempGreeting } from './greeting-data.js';
+import { characters, menu_type, create_save, createOrEditCharacter, chat, swipe, eventSource, event_types } from '../../../../../script.js';
+import { SWIPE_DIRECTION } from '../../../../constants.js';
+import { renderExtensionTemplateAsync } from '../../../../extensions.js';
+import { Popup, POPUP_TYPE, POPUP_RESULT, PopupUtils } from '../../../../popup.js';
+import { t } from '../../../../i18n.js';
+import { debounce, flashHighlight, getStringHash } from '../../../../utils.js';
+import { debounce_timeout } from '../../../../constants.js';
+import { EXTENSION_NAME } from '../index.js';
+import { findGreetingMetadata, generateGreetingId, getGreetingToolsData, saveGreetingToolsData, updateButtonAppearance, createTempMarker, getTempGreetings, saveTempGreetings, removeTempGreeting } from './data.js';
 import { greetingToolsSettings } from './settings.js';
 import {
     generateGreetingFlow,
     generateTitleAndDescription,
-} from './greeting-generator.js';
+} from './generator.js';
 
-/** @typedef {import('./greeting-data.js').GreetingToolsData} GreetingToolsData */
+/** @typedef {import('./data.js').GreetingToolsData} GreetingToolsData */
 
 /**
  * @typedef {Object} GreetingEditorState
@@ -393,8 +393,8 @@ export class GreetingToolsPopup {
      * Loads the HTML templates for popup and greeting block.
      */
     async #loadTemplates() {
-        const popupHtml = await renderExtensionTemplateAsync(`third-party/${EXTENSION_NAME}`, 'templates/greeting-tools-popup');
-        const blockHtml = await renderExtensionTemplateAsync(`third-party/${EXTENSION_NAME}`, 'templates/greeting-block');
+        const popupHtml = await renderExtensionTemplateAsync(`third-party/${EXTENSION_NAME}`, 'templates/popup');
+        const blockHtml = await renderExtensionTemplateAsync(`third-party/${EXTENSION_NAME}`, 'templates/block');
 
         // Create template element for block cloning
         const blockContainer = document.createElement('div');
