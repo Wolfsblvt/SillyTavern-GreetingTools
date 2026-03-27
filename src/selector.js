@@ -207,6 +207,41 @@ export async function switchToGreeting(swipeIndex) {
 }
 
 /**
+ * Toggles the description expand/collapse state with smooth animation.
+ * @param {HTMLElement} selector - The greeting selector container
+ */
+function toggleDescriptionExpand(selector) {
+    const descEl = /** @type {HTMLElement} */ (selector.querySelector('.greeting-selector-description'));
+    const expandBtn = /** @type {HTMLElement} */ (selector.querySelector('.greeting-selector-expand-btn'));
+    if (!descEl || !expandBtn) return;
+
+    const isExpanded = descEl.classList.contains('expanded');
+
+    if (isExpanded) {
+        // Collapse: lock current height → force reflow → remove to trigger CSS transition
+        descEl.style.maxHeight = descEl.scrollHeight + 'px';
+        void descEl.offsetHeight;
+        descEl.style.maxHeight = '';
+        descEl.classList.remove('expanded');
+        expandBtn.classList.remove('expanded');
+        expandBtn.title = t`Show full description`;
+    } else {
+        // Expand: animate max-height to full content height
+        descEl.style.maxHeight = descEl.scrollHeight + 'px';
+        descEl.classList.add('expanded');
+        expandBtn.classList.add('expanded');
+        expandBtn.title = t`Collapse description`;
+
+        // After transition completes, allow natural reflow
+        descEl.addEventListener('transitionend', () => {
+            if (descEl.classList.contains('expanded')) {
+                descEl.style.maxHeight = 'none';
+            }
+        }, { once: true });
+    }
+}
+
+/**
  * Toggles the greeting selector dropdown open or closed.
  * @param {HTMLElement} selector
  * @param {boolean} open - True to open, false to close
@@ -256,10 +291,25 @@ function updateSelectorUI(selector, { rebuildDropdown = false } = {}) {
     }
 
     // Update description (use temp data if available)
-    const descEl = selector.querySelector('.greeting-selector-description');
+    const descEl = /** @type {HTMLElement} */ (selector.querySelector('.greeting-selector-description'));
+    const expandBtn = /** @type {HTMLElement} */ (selector.querySelector('.greeting-selector-expand-btn'));
     if (descEl) {
         const description = isTempGreeting ? tempData?.description : currentOption?.description;
         descEl.textContent = description || '';
+
+        // Reset expand state on content change
+        descEl.classList.remove('expanded');
+        descEl.style.maxHeight = '';
+        if (expandBtn) {
+            expandBtn.classList.remove('expanded');
+            expandBtn.title = 'Show full description';
+
+            // Detect overflow after layout to show/hide expand button
+            requestAnimationFrame(() => {
+                const isOverflowing = description && descEl.scrollHeight > descEl.clientHeight;
+                expandBtn.classList.toggle('displayNone', !isOverflowing);
+            });
+        }
     }
 
     // Toggle readonly mode (hide buttons when not changeable)
@@ -508,6 +558,16 @@ function setupSelectorEventHandlers(selector) {
             e.preventDefault();
             e.stopPropagation();
             await handleSaveTempGreeting(selector);
+        });
+    }
+
+    // Expand/collapse button for description
+    const expandBtn = selector.querySelector('.greeting-selector-expand-btn');
+    if (expandBtn) {
+        expandBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleDescriptionExpand(selector);
         });
     }
 }

@@ -156,15 +156,45 @@
     font-style: italic;
     margin-top: 6px;
     white-space: pre-wrap;
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
     overflow: hidden;
-    line-clamp: 3;
+    line-height: 1.5;
+    max-height: 4.5em; /* 3 lines × 1.5 line-height */
+    transition: max-height 0.35s ease;
 }
 
 .greeting-selector-description:empty {
     display: none;
+}
+
+.greeting-selector-description:empty + .greeting-selector-expand-btn {
+    display: none !important;
+}
+
+/* Expand/collapse toggle button for description */
+.greeting-selector-expand-btn {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    margin-top: 2px;
+    padding: 2px 0;
+    border-radius: 4px;
+    opacity: 0.4;
+    transition: opacity 0.2s ease, background-color 0.2s ease;
+    font-size: 0.8em;
+}
+
+.greeting-selector-expand-btn:hover {
+    opacity: 0.8;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+}
+
+.greeting-selector-expand-btn i {
+    transition: transform 0.35s ease;
+}
+
+.greeting-selector-expand-btn.expanded i {
+    transform: rotate(180deg);
 }
 
 .greeting-selector-swipe-info {
