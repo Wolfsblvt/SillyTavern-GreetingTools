@@ -10,6 +10,7 @@ import { t } from '../../../../i18n.js';
 import { escapeRegex } from '../../../../utils.js';
 import { greetingToolsSettings, isConnectionManagerAvailable } from './settings.js';
 import { getGreetingToolsData, generateGreetingId } from './data.js';
+import { StreamingDisplay } from './streaming-display.js';
 import { loader } from '/scripts/action-loader.js';
 
 /**
@@ -163,10 +164,23 @@ export async function generateGreetingContent(customPrompt, { loaderMessage, exi
         message: loaderMessage || t`Generating new greeting...`,
     });
 
-    try {
-        const response = await callLLM(prompt, systemPrompt);
+    const display = new StreamingDisplay();
+    display.show({ label: t`Generating greeting...` });
 
-        console.info('[GreetingTools] Generated greeting content', { text: response });
+    try {
+        const { content: response, reasoning } = await callLLM(prompt, systemPrompt, {
+            onStream: (update) => {
+                display.updateReasoning(update.reasoning);
+                display.updateContent(update.text);
+            },
+        });
+
+        // For non-streaming: show reasoning if returned
+        if (reasoning && !display.hasContent) {
+            display.updateReasoning(reasoning);
+        }
+
+        console.info('[GreetingTools] Generated greeting content', { text: response, reasoning });
 
         if (!response || typeof response !== 'string') {
             toastr.error(t`No response from LLM`);
@@ -192,6 +206,7 @@ export async function generateGreetingContent(customPrompt, { loaderMessage, exi
         toastr.error(t`Failed to generate greeting`);
         return null;
     } finally {
+        display.hide();
         await greetingLoader.hide();
     }
 }
@@ -229,11 +244,24 @@ export async function generateTitleAndDescription(greetingContent, { existingTit
         ? loader.show({ message: t`Generating title and description...` })
         : null;
 
+    const display = new StreamingDisplay();
+    display.show({ label: t`Generating title & description...` });
+
     try {
-        const response = await callLLM(prompt, systemPrompt);
+        const { content: response, reasoning } = await callLLM(prompt, systemPrompt, {
+            onStream: (update) => {
+                display.updateReasoning(update.reasoning);
+                display.updateContent(update.text);
+            },
+        });
+
+        // For non-streaming: show reasoning if returned
+        if (reasoning && !display.hasContent) {
+            display.updateReasoning(reasoning);
+        }
 
         // Log full response for debugging
-        console.info('[GreetingTools] LLM response for title/description', { text: response });
+        console.info('[GreetingTools] LLM response for title/description', { text: response, reasoning });
 
         if (!response || typeof response !== 'string') {
             toastr.error(t`No response from LLM`);
@@ -277,6 +305,7 @@ export async function generateTitleAndDescription(greetingContent, { existingTit
         }
         return null;
     } finally {
+        display.hide();
         await genLoader?.hide();
     }
 }
@@ -367,36 +396,69 @@ export async function generateGreetingFlow({
 }
 
 /**
+ * @typedef {Object} LLMResponse
+ * @property {string} content - The generated text content
+ * @property {string} reasoning - The reasoning/thinking text (empty if unavailable)
+ */
+
+/**
+ * @typedef {Object} StreamUpdate
+ * @property {string} text - Accumulated content text so far
+ * @property {string} reasoning - Accumulated reasoning text so far
+ */
+
+/**
  * Calls the LLM with the given prompt and system prompt.
  * Uses ConnectionManagerRequestService if a connection profile is selected and available,
  * otherwise falls back to generateRaw with the main model.
+ * When using CMRS with an onStream callback, enables streaming for live output.
  * @param {string} prompt - The user prompt
  * @param {string} systemPrompt - The system prompt
- * @returns {Promise<string>} The LLM response text
+ * @param {Object} [options]
+ * @param {(update: StreamUpdate) => void} [options.onStream] - Callback for streaming updates. Enables streaming when provided and CMRS is used.
+ * @returns {Promise<LLMResponse>} The LLM response with content and reasoning
  */
-async function callLLM(prompt, systemPrompt) {
+async function callLLM(prompt, systemPrompt, { onStream } = {}) {
     const profileId = greetingToolsSettings.connectionProfileId;
 
     if (profileId && isConnectionManagerAvailable()) {
+        const useStreaming = !!onStream;
         const messages = [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: prompt },
         ];
 
-        const response = /** @type {import('../../../../custom-request.js').ExtractedData} */ (await ConnectionManagerRequestService.sendRequest(
+        const response = await ConnectionManagerRequestService.sendRequest(
             profileId,
             messages,
             CONNECTION_PROFILE_MAX_TOKENS,
-            { extractData: true, includePreset: true, stream: false },
-        ));
+            { extractData: true, includePreset: true, stream: useStreaming },
+        );
 
-        if (typeof response === 'string') return response;
-        return response?.content || '';
+        // Streaming: consume the async generator, forwarding chunks to the callback
+        if (useStreaming && typeof response === 'function') {
+            const generator = /** @type {AsyncGenerator<import('../../../../custom-request.js').StreamResponse>} */ (response());
+            let finalText = '';
+            let finalReasoning = '';
+            for await (const chunk of generator) {
+                finalText = chunk.text;
+                finalReasoning = chunk.state?.reasoning || '';
+                onStream({ text: finalText, reasoning: finalReasoning });
+            }
+            return { content: finalText, reasoning: finalReasoning };
+        }
+
+        // Non-streaming CMRS response
+        const extracted = /** @type {import('../../../../custom-request.js').ExtractedData} */ (response);
+        if (typeof extracted === 'string') return { content: extracted, reasoning: '' };
+        return { content: extracted?.content || '', reasoning: extracted?.reasoning || '' };
     }
 
-    return await generateRaw({
+    // Fallback: generateRaw (no streaming, no reasoning available)
+    const result = await generateRaw({
         prompt,
         systemPrompt,
         instructOverride: true,
     });
+    return { content: result, reasoning: '' };
 }

@@ -319,3 +319,105 @@
     border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor, #f0ad4e) 50%, transparent);
     border-radius: 4px;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Streaming Display (floating toast for live LLM generation output)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.gt-streaming-display {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 420px;
+    max-width: calc(100vw - 40px);
+    max-height: 60vh;
+    background: var(--SmartThemeBlurTintColor);
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 10px;
+    padding: 14px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(12px);
+}
+
+.gt-streaming-display-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.gt-streaming-label {
+    font-weight: 600;
+    font-size: 0.95em;
+    color: var(--SmartThemeBodyColor);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.gt-streaming-label::before {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--SmartThemeQuoteColor);
+    animation: gt-streaming-pulse 1.5s ease-in-out infinite;
+    flex-shrink: 0;
+}
+
+@keyframes gt-streaming-pulse {
+    0%, 100% { opacity: 0.4; transform: scale(0.9); }
+    50% { opacity: 1; transform: scale(1.1); }
+}
+
+/* Reasoning (thinking) section */
+.gt-streaming-reasoning {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+    border-radius: 6px;
+    padding: 8px 10px;
+    border-left: 3px solid color-mix(in srgb, var(--SmartThemeBodyColor) 25%, transparent);
+}
+
+.gt-streaming-reasoning-label {
+    font-size: 0.8em;
+    font-weight: 600;
+    opacity: 0.5;
+    margin-bottom: 4px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+.gt-streaming-reasoning-content {
+    font-size: 0.82em;
+    opacity: 0.65;
+    max-height: 150px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.45;
+    scrollbar-width: thin;
+}
+
+/* Main content section */
+.gt-streaming-text {
+    border-top: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 50%, transparent);
+    padding-top: 8px;
+}
+
+.gt-streaming-text-content {
+    font-size: 0.9em;
+    color: var(--SmartThemeBodyColor);
+    max-height: 250px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.5;
+    scrollbar-width: thin;
+}
