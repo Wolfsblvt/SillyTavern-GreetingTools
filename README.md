@@ -110,9 +110,11 @@ Access the extension settings under **Extensions → Greeting Tools** in SillyTa
 
 This is the roadmap of planned or suggested features that might make it into a future release.
 
+- [x] Allow secondary connection via optional 'Connection Profile' that can be chosen (plus slash command)
 - [ ] "Greeting Length" setting, instead of having to manually edit prompt
-- [ ] Uninstall hook with (optional) removal of any greeting data (including stored in character metadata)
 - [ ] Batch auto-fill titles for all greetings at once
+- [ ] Stream generation of title/description if possible - also show thinking
+- [ ] Uninstall hook with (optional) removal of any greeting data (including stored in character metadata)
 - [ ] Slash commands to manage greetings, titles and descriptions
 - [ ] Greeting usage statistics (which greeting was used how often)
 
@@ -133,7 +135,7 @@ This list mostly functions as a personal reminder of what still needs to be done
 - [x] Make temp greeting title/desc editable and generateable
 - [x] Refactoring / code cleanup (move functions, rename scripts, for separation of concerns) + Move most scripts into subfolder (keeping main repo page clean)
 - [x] "Replace names with macros" button in the popup for manual replacing
-- [ ] "Expand" button in the in-chat widget to see full description
+- [x] "Expand" button in the in-chat widget to see full description
 - [ ] Store extension version in extension metadata - on update check/ask if default prompts should be updated
 
 ## License

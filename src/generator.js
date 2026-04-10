@@ -4,12 +4,19 @@
  */
 
 import { characters, generateRaw, substituteParams, name1, name2, this_chid } from '../../../../../script.js';
+import { ConnectionManagerRequestService } from '../../../../extensions/shared.js';
 import { Popup, POPUP_TYPE } from '../../../../popup.js';
 import { t } from '../../../../i18n.js';
 import { escapeRegex } from '../../../../utils.js';
-import { greetingToolsSettings } from './settings.js';
+import { greetingToolsSettings, isConnectionManagerAvailable } from './settings.js';
 import { getGreetingToolsData, generateGreetingId } from './data.js';
 import { loader } from '/scripts/action-loader.js';
+
+/**
+ * Default max tokens for connection profile generation requests.
+ * Used when generating via ConnectionManagerRequestService instead of the main model.
+ */
+const CONNECTION_PROFILE_MAX_TOKENS = 2048;
 
 /** Default placeholder text for the generate greeting popup */
 const GENERATE_GREETING_PLACEHOLDER = t`Describe what kind of greeting scenario you want to generate. Leave empty for a general new greeting based on the character.`;
@@ -157,11 +164,7 @@ export async function generateGreetingContent(customPrompt, { loaderMessage, exi
     });
 
     try {
-        const response = await generateRaw({
-            prompt,
-            systemPrompt,
-            instructOverride: true,
-        });
+        const response = await callLLM(prompt, systemPrompt);
 
         console.info('[GreetingTools] Generated greeting content', { text: response });
 
@@ -227,11 +230,7 @@ export async function generateTitleAndDescription(greetingContent, { existingTit
         : null;
 
     try {
-        const response = await generateRaw({
-            prompt,
-            systemPrompt,
-            instructOverride: true,
-        });
+        const response = await callLLM(prompt, systemPrompt);
 
         // Log full response for debugging
         console.info('[GreetingTools] LLM response for title/description', { text: response });
@@ -365,4 +364,39 @@ export async function generateGreetingFlow({
         tempToasts.clear();
         await wrappingLoader.hide();
     }
+}
+
+/**
+ * Calls the LLM with the given prompt and system prompt.
+ * Uses ConnectionManagerRequestService if a connection profile is selected and available,
+ * otherwise falls back to generateRaw with the main model.
+ * @param {string} prompt - The user prompt
+ * @param {string} systemPrompt - The system prompt
+ * @returns {Promise<string>} The LLM response text
+ */
+async function callLLM(prompt, systemPrompt) {
+    const profileId = greetingToolsSettings.connectionProfileId;
+
+    if (profileId && isConnectionManagerAvailable()) {
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt },
+        ];
+
+        const response = /** @type {import('../../../../custom-request.js').ExtractedData} */ (await ConnectionManagerRequestService.sendRequest(
+            profileId,
+            messages,
+            CONNECTION_PROFILE_MAX_TOKENS,
+            { extractData: true, includePreset: true, stream: false },
+        ));
+
+        if (typeof response === 'string') return response;
+        return response?.content || '';
+    }
+
+    return await generateRaw({
+        prompt,
+        systemPrompt,
+        instructOverride: true,
+    });
 }

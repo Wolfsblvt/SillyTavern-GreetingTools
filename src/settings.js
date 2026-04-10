@@ -5,6 +5,7 @@
 
 import { saveSettingsDebounced } from '../../../../../script.js';
 import { extension_settings, renderExtensionTemplateAsync } from '../../../../extensions.js';
+import { ConnectionManagerRequestService } from '../../../../extensions/shared.js';
 import { t } from '../../../../i18n.js';
 import { EXTENSION_KEY, EXTENSION_NAME } from '../index.js';
 import { DEFAULT_GENERATE_SYSTEM_PROMPT, DEFAULT_GENERATE_GREETING_SYSTEM_PROMPT, DEFAULT_GENERATION_PROMPT_WITH_THEME, DEFAULT_GENERATION_PROMPT_WITHOUT_THEME } from './default-prompts.js';
@@ -13,6 +14,7 @@ import { DEFAULT_GENERATE_SYSTEM_PROMPT, DEFAULT_GENERATE_GREETING_SYSTEM_PROMPT
 const defaultSettings = {
     collapseByDefault: false,
     replaceNamesWithMacros: true,
+    connectionProfileId: '',
     generateSystemPrompt: DEFAULT_GENERATE_SYSTEM_PROMPT,
     generateGreetingSystemPrompt: DEFAULT_GENERATE_GREETING_SYSTEM_PROMPT,
     generationPromptWithTheme: DEFAULT_GENERATION_PROMPT_WITH_THEME,
@@ -49,6 +51,10 @@ export const greetingToolsSettings = {
     get replaceNamesWithMacros() {
         return Boolean(ensureSettings().replaceNamesWithMacros);
     },
+    /** @returns {string} The selected connection profile ID, or empty string for default/main model */
+    get connectionProfileId() {
+        return ensureSettings().connectionProfileId || '';
+    },
     get generateSystemPrompt() {
         return ensureSettings().generateSystemPrompt || DEFAULT_GENERATE_SYSTEM_PROMPT;
     },
@@ -62,6 +68,19 @@ export const greetingToolsSettings = {
         return ensureSettings().generationPromptWithoutTheme || DEFAULT_GENERATION_PROMPT_WITHOUT_THEME;
     },
 };
+
+/**
+ * Checks whether the Connection Manager extension is available (enabled and loaded).
+ * @returns {boolean}
+ */
+export function isConnectionManagerAvailable() {
+    try {
+        const context = SillyTavern.getContext();
+        return !context.extensionSettings.disabledExtensions.includes('connection-manager');
+    } catch {
+        return false;
+    }
+}
 
 /**
  * Applies settings to UI elements.
@@ -221,6 +240,63 @@ export async function injectSettingsUI() {
 
     applySettingsToUI();
     registerSettingsEventListeners();
+    initConnectionProfileDropdown();
 
     uiInjected = true;
+}
+
+/**
+ * Initializes the connection profile dropdown if Connection Manager is available.
+ * Uses ConnectionManagerRequestService.handleDropdown for population and event handling.
+ */
+function initConnectionProfileDropdown() {
+    const wrapper = document.getElementById('greeting_tools_connection_profile_wrapper');
+    if (!wrapper) return;
+
+    if (!isConnectionManagerAvailable()) {
+        wrapper.style.display = 'none';
+        return;
+    }
+
+    wrapper.style.display = '';
+
+    const settings = ensureSettings();
+    const selector = '#greeting_tools_connection_profile';
+
+    try {
+        // Register our delete listener BEFORE handleDropdown sets up its own.
+        // This ensures our listener runs first, while settings.connectionProfileId still holds the old value.
+        // handleDropdown's internal listener fires onChange (which clears the setting) before its onDelete callback.
+        const { eventSource, eventTypes } = SillyTavern.getContext();
+        eventSource.on(eventTypes.CONNECTION_PROFILE_DELETED, (profile) => {
+            if (settings.connectionProfileId === profile.id) {
+                toastr.warning(
+                    t`The connection profile "${profile.name}" used for Greeting Tools generation was deleted. Falling back to the main model.`,
+                    t`Greeting Tools`,
+                    { timeOut: 5000 },
+                );
+            }
+        });
+
+        ConnectionManagerRequestService.handleDropdown(
+            selector,
+            settings.connectionProfileId,
+            // onChange: fires on user selection, profile delete (resets to ''), and profile update
+            (profile) => {
+                settings.connectionProfileId = profile?.id || '';
+                saveSettingsDebounced();
+            },
+        );
+
+        // Replace the default "Select a Connection Profile" option text with our custom default
+        const dropdown = document.querySelector(selector);
+        const defaultOption = dropdown?.querySelector('option[value=""]');
+        if (defaultOption) {
+            defaultOption.textContent = t`Default (Main Model)`;
+            defaultOption.dataset.i18n = 'Default (Main Model)';
+        }
+    } catch (error) {
+        console.warn('[GreetingTools] Could not initialize connection profile dropdown:', error);
+        wrapper.style.display = 'none';
+    }
 }
