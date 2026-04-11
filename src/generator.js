@@ -10,7 +10,7 @@ import { t } from '../../../../i18n.js';
 import { escapeRegex } from '../../../../utils.js';
 import { greetingToolsSettings, isConnectionManagerAvailable } from './settings.js';
 import { getGreetingToolsData, generateGreetingId } from './data.js';
-import { StreamingDisplay } from './streaming-display.js';
+import { StreamingDisplay } from '../../../../streaming-display.js';
 import { loader } from '/scripts/action-loader.js';
 
 /**
@@ -165,7 +165,7 @@ export async function generateGreetingContent(customPrompt, { loaderMessage, exi
     });
 
     const display = new StreamingDisplay();
-    display.show({ label: t`Generating greeting...` });
+    display.show({ label: t`Generating greeting...`, icon: ConnectionManagerRequestService.getProfileIcon(greetingToolsSettings.connectionProfileId) });
 
     try {
         const { content: response, reasoning } = await callLLM(prompt, systemPrompt, {
@@ -245,7 +245,7 @@ export async function generateTitleAndDescription(greetingContent, { existingTit
         : null;
 
     const display = new StreamingDisplay();
-    display.show({ label: t`Generating title & description...` });
+    display.show({ label: t`Generating title & description...`, icon: ConnectionManagerRequestService.getProfileIcon(greetingToolsSettings.connectionProfileId) });
 
     try {
         const { content: response, reasoning } = await callLLM(prompt, systemPrompt, {
@@ -422,36 +422,48 @@ async function callLLM(prompt, systemPrompt, { onStream } = {}) {
     const profileId = greetingToolsSettings.connectionProfileId;
 
     if (profileId && isConnectionManagerAvailable()) {
-        const useStreaming = !!onStream;
         const messages = [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: prompt },
         ];
 
+        // Attempt streaming if callback provided
+        if (onStream) {
+            try {
+                const streamResponse = await ConnectionManagerRequestService.sendRequest(
+                    profileId,
+                    messages,
+                    CONNECTION_PROFILE_MAX_TOKENS,
+                    { extractData: true, includePreset: true, stream: true },
+                );
+
+                if (typeof streamResponse === 'function') {
+                    const generator = /** @type {AsyncGenerator<import('../../../../custom-request.js').StreamResponse>} */ (streamResponse());
+                    let finalText = '';
+                    let finalReasoning = '';
+                    for await (const chunk of generator) {
+                        finalText = chunk.text;
+                        finalReasoning = chunk.state?.reasoning || '';
+                        onStream({ text: finalText, reasoning: finalReasoning });
+                    }
+                    return { content: finalText, reasoning: finalReasoning };
+                }
+
+                // Response wasn't a stream generator — extract as non-streaming
+                return extractNonStreamingResponse(streamResponse);
+            } catch (error) {
+                console.warn('[GreetingTools] Streaming failed, falling back to non-streaming:', error);
+            }
+        }
+
+        // Non-streaming path (default or fallback from failed streaming)
         const response = await ConnectionManagerRequestService.sendRequest(
             profileId,
             messages,
             CONNECTION_PROFILE_MAX_TOKENS,
-            { extractData: true, includePreset: true, stream: useStreaming },
+            { extractData: true, includePreset: true, stream: false },
         );
-
-        // Streaming: consume the async generator, forwarding chunks to the callback
-        if (useStreaming && typeof response === 'function') {
-            const generator = /** @type {AsyncGenerator<import('../../../../custom-request.js').StreamResponse>} */ (response());
-            let finalText = '';
-            let finalReasoning = '';
-            for await (const chunk of generator) {
-                finalText = chunk.text;
-                finalReasoning = chunk.state?.reasoning || '';
-                onStream({ text: finalText, reasoning: finalReasoning });
-            }
-            return { content: finalText, reasoning: finalReasoning };
-        }
-
-        // Non-streaming CMRS response
-        const extracted = /** @type {import('../../../../custom-request.js').ExtractedData} */ (response);
-        if (typeof extracted === 'string') return { content: extracted, reasoning: '' };
-        return { content: extracted?.content || '', reasoning: extracted?.reasoning || '' };
+        return extractNonStreamingResponse(response);
     }
 
     // Fallback: generateRaw (no streaming, no reasoning available)
@@ -461,4 +473,15 @@ async function callLLM(prompt, systemPrompt, { onStream } = {}) {
         instructOverride: true,
     });
     return { content: result, reasoning: '' };
+}
+
+/**
+ * Extracts content and reasoning from a non-streaming CMRS response.
+ * @param {import('../../../../custom-request.js').ExtractedData | string} response
+ * @returns {LLMResponse}
+ */
+function extractNonStreamingResponse(response) {
+    if (typeof response === 'string') return { content: response, reasoning: '' };
+    const extracted = /** @type {import('../../../../custom-request.js').ExtractedData} */ (response);
+    return { content: extracted?.content || '', reasoning: extracted?.reasoning || '' };
 }

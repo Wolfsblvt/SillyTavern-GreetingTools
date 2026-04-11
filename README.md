@@ -146,3 +146,4 @@ AGPL-3.0
 
 - Discord: `@Wolfsblvt`
 - Issues and pull requests are welcome.
+- Any features/fixes should be pushed to the `dev` branch.
