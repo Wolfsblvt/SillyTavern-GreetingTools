@@ -11,8 +11,8 @@ export const DEFAULT_GENERATE_SYSTEM_PROMPT = translate(`You are helping organiz
 Your task is to generate a short, memorable **title** and a brief **description** for the following greeting message.
 
 ## Instructions
-- The **title** should be 2-7 words, catchy and descriptive of the greeting's theme or mood, making it unique and recognizable between the other greetings
-- The **description** should be 2-6 sentences summarizing the greeting, picking up what makes this unique
+- The **title** should be {{titleLength}}, catchy and descriptive of the greeting's theme or mood, making it unique and recognizable between the other greetings
+- The **description** should be {{descriptionLength}} summarizing the greeting, picking up what makes this unique
   - Add double linebreaks to split the description if needed, for better formatting
   - Be creative but accurate to the greeting's content
   - Keep the description precise and as a summary of the greeting
@@ -62,6 +62,7 @@ Write a compelling, immersive **first message** that establishes an interesting 
 - Reflect the character's personality and speaking style
 - Be detailed enough to give {{user}} something to respond to
 - Include scene-setting, actions, dialogue, or inner thoughts as appropriate
+- The greeting should be {{greetingLength}}
 
 {{#if charDescription}}
 ## Character Description

@@ -98,7 +98,7 @@ Access the extension settings under **Extensions → Greeting Tools** in SillyTa
   - **Greeting Base (without theme)** — The user prompt sent to the LLM when no theme is provided.
   - Each prompt has a **Reset to default** button to restore the built-in prompt.
   - Any macros will be replaced as usual in prompts, before sending to the LLM.
-  - Available dynamic macros are documented directly in the settings UI (e.g., `{{existingTitles}}`, `{{customPrompt}}`).
+  - Available dynamic macros are documented directly in the settings UI (e.g., `{{existingTitles}}`, `{{customPrompt}}`, `{{greetingLength}}`).
 
 ### How Greeting Data is Stored
 
@@ -111,10 +111,10 @@ Access the extension settings under **Extensions → Greeting Tools** in SillyTa
 This is the roadmap of planned or suggested features that might make it into a future release.
 
 - [x] Allow secondary connection via optional 'Connection Profile' that can be chosen (plus slash command)
-- [ ] "Greeting Length" setting, instead of having to manually edit prompt
-- [ ] Batch auto-fill titles for all greetings at once
-- [ ] Stream generation of title/description if possible - also show thinking
+- [x] Stream generation of title/description if possible - also show thinking
+- [x] "Greeting Length" setting, instead of having to manually edit prompt
 - [ ] Uninstall hook with (optional) removal of any greeting data (including stored in character metadata)
+- [ ] Batch auto-fill titles for all greetings at once
 - [ ] Slash commands to manage greetings, titles and descriptions
 - [ ] Greeting usage statistics (which greeting was used how often)
 

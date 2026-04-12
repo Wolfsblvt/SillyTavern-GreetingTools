@@ -17,18 +17,37 @@
                         <small class="notes" data-i18n="Replaces character/user names with &lcub;&lcub;char&rcub;&rcub; and &lcub;&lcub;user&rcub;&rcub;">Replaces character/user names with &lcub;&lcub;char&rcub;&rcub; and &lcub;&lcub;user&rcub;&rcub;</small>
                     </div>
                 </label>
-            </div>
-            <div id="greeting_tools_connection_profile_wrapper" class="flex-container flexFlowColumn" style="display: none;">
-                <hr>
-                <label for="greeting_tools_connection_profile">
-                    <span data-i18n="Connection Profile for Generation">Connection Profile for Generation</span>
-                </label>
-                <select id="greeting_tools_connection_profile" class="text_pole">
-                    <option value="" data-i18n="Default (Main Model)">Default (Main Model)</option>
-                </select>
-                <small class="notes">
-                    <span data-i18n="Use a separate connection profile for greeting generation instead of the main model. Requires Connection Manager to be enabled.">Use a separate connection profile for greeting generation instead of the main model. Requires Connection Manager to be enabled.</span>
-                </small>
+                <div class="flex-container flexFlowColumn gap5">
+                    <label for="greeting_tools_greeting_length" data-i18n="Greeting Length">Greeting Length</label>
+                    <small class="notes" data-i18n="Controls how long generated greetings should be.">Controls how long generated greetings should be.</small>
+                    <select id="greeting_tools_greeting_length" class="text_pole">
+                        <option value="short" data-i18n="Short (1-3 paragraphs)">Short (1-3 paragraphs)</option>
+                        <option value="medium" data-i18n="Medium (3-5 paragraphs)">Medium (3-5 paragraphs)</option>
+                        <option value="long" data-i18n="Long (5-8 paragraphs)">Long (5-8 paragraphs)</option>
+                        <option value="very_long" data-i18n="Very Long (8+ paragraphs)">Very Long (8+ paragraphs)</option>
+                        <option value="custom" data-i18n="Custom">Custom</option>
+                    </select>
+                    <div id="greeting_tools_greeting_length_custom_wrapper" class="displayNone">
+                        <input type="text" id="greeting_tools_greeting_length_custom" class="text_pole" placeholder="e.g. very short (1-2 paragraphs)" data-i18n="[placeholder]e.g. very short (1-2 paragraphs)" />
+                        <small class="notes" data-i18n="This text is injected directly into the prompt as the length instruction.">This text is injected directly into the prompt as the &lcub;&lcub;greetingLength&rcub;&rcub; macro value.</small>
+                    </div>
+                </div>
+                <div class="flex-container flexFlowColumn gap5">
+                    <label for="greeting_tools_title_desc_length" data-i18n="Title &amp; Description Length">Title &amp; Description Length</label>
+                    <small class="notes" data-i18n="Controls how long generated titles and descriptions should be.">Controls how long generated titles and descriptions should be.</small>
+                    <select id="greeting_tools_title_desc_length" class="text_pole">
+                        <option value="brief" data-i18n="Brief (title: 2-4 words, description: 1-2 sentences)">Brief (title: 2-4 words, desc: 1-2 sentences)</option>
+                        <option value="short" data-i18n="Short (title: 2-5 words, description: 2-3 sentences)">Short (title: 2-5 words, desc: 2-3 sentences)</option>
+                        <option value="medium" data-i18n="Medium (title: 3-6 words, description: 2-4 sentences)">Medium (title: 3-6 words, desc: 2-4 sentences)</option>
+                        <option value="detailed" data-i18n="Detailed (title: 4-7 words, description: 3-6 sentences)">Detailed (title: 4-7 words, desc: 3-6 sentences)</option>
+                        <option value="custom" data-i18n="Custom">Custom</option>
+                    </select>
+                    <div id="greeting_tools_title_desc_length_custom_wrapper" class="displayNone flex-container flexFlowColumn gap5">
+                        <input type="text" id="greeting_tools_title_desc_length_custom_title" class="text_pole" placeholder="Title length, e.g. 3-5 words" data-i18n="[placeholder]Title length, e.g. 3-5 words" />
+                        <input type="text" id="greeting_tools_title_desc_length_custom_description" class="text_pole" placeholder="Description length, e.g. 2-3 sentences" data-i18n="[placeholder]Description length, e.g. 2-3 sentences" />
+                        <small class="notes" data-i18n="These texts are injected as {{titleLength}} and {{descriptionLength}} macros.">These texts are injected as &lcub;&lcub;titleLength&rcub;&rcub; and &lcub;&lcub;descriptionLength&rcub;&rcub; macros.</small>
+                    </div>
+                </div>
             </div>
             <div class="inline-drawer marginTop5">
                 <div class="inline-drawer-toggle inline-drawer-header">
@@ -51,6 +70,8 @@
                             <span>The following macros are available to use:</span>
                             <ul>
                                 <li data-i18n="existingTitles contains existing greeting titles to avoid duplicates"><code>{{existingTitles}}</code> contains existing greeting titles to avoid duplicates</li>
+                                <li data-i18n="titleLength contains the configured title length instruction"><code>{{titleLength}}</code> contains the configured title length instruction</li>
+                                <li data-i18n="descriptionLength contains the configured description length instruction"><code>{{descriptionLength}}</code> contains the configured description length instruction</li>
                             </ul>
                         </small>
                         <div class="flex-container alignItemsCenter">
@@ -71,6 +92,7 @@
                             <ul>
                                 <li data-i18n="customPrompt contains user-requested theme/scenario if provided"><code>{{customPrompt}}</code> contains user-requested theme/scenario if provided</li>
                                 <li data-i18n="existingTitles contains existing greeting titles to avoid duplicates"><code>{{existingTitles}}</code> contains existing greeting titles to avoid duplicates</li>
+                                <li data-i18n="greetingLength contains the configured greeting length instruction"><code>{{greetingLength}}</code> contains the configured greeting length instruction</li>
                             </ul>
                         </small>
                         <div class="flex-container alignItemsCenter">

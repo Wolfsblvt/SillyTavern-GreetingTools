@@ -149,6 +149,7 @@ export async function generateGreetingContent(customPrompt, { loaderMessage, exi
     const dynamicMacros = {
         existingTitles,
         customPrompt: customPrompt || '',
+        greetingLength: greetingToolsSettings.greetingLengthValue,
     };
 
     // Substitute macros in system prompt (uses customizable prompt from settings)
@@ -235,6 +236,8 @@ export async function generateTitleAndDescription(greetingContent, { existingTit
         charPersonality: character.personality || '',
         scenario: character.scenario || '',
         existingTitles: titles,
+        titleLength: greetingToolsSettings.titleLengthValue,
+        descriptionLength: greetingToolsSettings.descriptionLengthValue,
     };
 
     const systemPrompt = substituteParams(greetingToolsSettings.generateSystemPrompt, undefined, undefined, dynamicMacros);

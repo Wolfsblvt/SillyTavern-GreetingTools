@@ -10,11 +10,53 @@ import { t } from '../../../../i18n.js';
 import { EXTENSION_KEY, EXTENSION_NAME } from '../index.js';
 import { DEFAULT_GENERATE_SYSTEM_PROMPT, DEFAULT_GENERATE_GREETING_SYSTEM_PROMPT, DEFAULT_GENERATION_PROMPT_WITH_THEME, DEFAULT_GENERATION_PROMPT_WITHOUT_THEME } from './default-prompts.js';
 
+/**
+ * Predefined greeting length options.
+ * Each value is the instruction text injected into the generation prompt as {{greetingLength}}.
+ * @readonly
+ * @enum {string}
+ */
+export const GREETING_LENGTH = /** @type {const} */ ({
+    short: 'short (1-3 paragraphs)',
+    medium: 'medium (3-5 paragraphs)',
+    long: 'long (5-8 paragraphs)',
+    very_long: 'very long (8+ paragraphs)',
+    custom: 'custom',
+});
+
+/** @typedef {keyof typeof GREETING_LENGTH} GreetingLengthKey */
+
+/** Default greeting length key */
+const DEFAULT_GREETING_LENGTH = /** @type {GreetingLengthKey} */ ('medium');
+
+/**
+ * Predefined title/description length options.
+ * Each value is a pair of instruction strings injected as {{titleLength}} and {{descriptionLength}}.
+ * @readonly
+ */
+export const TITLE_DESC_LENGTH = /** @type {const} */ ({
+    brief: { title: '2-4 words', description: '1-2 sentences' },
+    short: { title: '2-5 words', description: '2-3 sentences' },
+    medium: { title: '3-6 words', description: '2-4 sentences' },
+    detailed: { title: '4-7 words', description: '3-6 sentences' },
+    custom: { title: 'custom', description: 'custom' },
+});
+
+/** @typedef {keyof typeof TITLE_DESC_LENGTH} TitleDescLengthKey */
+
+/** Default title/description length key */
+const DEFAULT_TITLE_DESC_LENGTH = /** @type {TitleDescLengthKey} */ ('medium');
+
 /** @readonly Default settings values */
 const defaultSettings = {
     collapseByDefault: false,
     replaceNamesWithMacros: true,
     connectionProfileId: '',
+    greetingLength: DEFAULT_GREETING_LENGTH,
+    greetingLengthCustom: '',
+    titleDescLength: DEFAULT_TITLE_DESC_LENGTH,
+    titleDescLengthCustomTitle: '',
+    titleDescLengthCustomDescription: '',
     generateSystemPrompt: DEFAULT_GENERATE_SYSTEM_PROMPT,
     generateGreetingSystemPrompt: DEFAULT_GENERATE_GREETING_SYSTEM_PROMPT,
     generationPromptWithTheme: DEFAULT_GENERATION_PROMPT_WITH_THEME,
@@ -67,6 +109,59 @@ export const greetingToolsSettings = {
     get generationPromptWithoutTheme() {
         return ensureSettings().generationPromptWithoutTheme || DEFAULT_GENERATION_PROMPT_WITHOUT_THEME;
     },
+    /** @returns {GreetingLengthKey} */
+    get greetingLength() {
+        const val = ensureSettings().greetingLength;
+        return (val in GREETING_LENGTH) ? /** @type {GreetingLengthKey} */ (val) : DEFAULT_GREETING_LENGTH;
+    },
+    get greetingLengthCustom() {
+        return String(ensureSettings().greetingLengthCustom || '');
+    },
+    /**
+     * Returns the resolved greeting length instruction string to use in prompts.
+     * If 'custom' is selected and the custom text is non-empty, uses that; otherwise falls back to medium.
+     * @returns {string}
+     */
+    get greetingLengthValue() {
+        const key = this.greetingLength;
+        if (key === 'custom') {
+            return this.greetingLengthCustom || GREETING_LENGTH[DEFAULT_GREETING_LENGTH];
+        }
+        return GREETING_LENGTH[key];
+    },
+    /** @returns {TitleDescLengthKey} */
+    get titleDescLength() {
+        const val = ensureSettings().titleDescLength;
+        return (val in TITLE_DESC_LENGTH) ? /** @type {TitleDescLengthKey} */ (val) : DEFAULT_TITLE_DESC_LENGTH;
+    },
+    get titleDescLengthCustomTitle() {
+        return String(ensureSettings().titleDescLengthCustomTitle || '');
+    },
+    get titleDescLengthCustomDescription() {
+        return String(ensureSettings().titleDescLengthCustomDescription || '');
+    },
+    /**
+     * Returns the resolved title length instruction string.
+     * @returns {string}
+     */
+    get titleLengthValue() {
+        const key = this.titleDescLength;
+        if (key === 'custom') {
+            return this.titleDescLengthCustomTitle || TITLE_DESC_LENGTH[DEFAULT_TITLE_DESC_LENGTH].title;
+        }
+        return TITLE_DESC_LENGTH[key].title;
+    },
+    /**
+     * Returns the resolved description length instruction string.
+     * @returns {string}
+     */
+    get descriptionLengthValue() {
+        const key = this.titleDescLength;
+        if (key === 'custom') {
+            return this.titleDescLengthCustomDescription || TITLE_DESC_LENGTH[DEFAULT_TITLE_DESC_LENGTH].description;
+        }
+        return TITLE_DESC_LENGTH[key].description;
+    },
 };
 
 /**
@@ -79,6 +174,28 @@ export function isConnectionManagerAvailable() {
         return !context.extensionSettings.disabledExtensions.includes('connection-manager');
     } catch {
         return false;
+    }
+}
+
+/**
+ * Shows or hides the custom greeting length input based on the selected length key.
+ * @param {string} lengthKey
+ */
+function updateGreetingLengthCustomVisibility(lengthKey) {
+    const wrapper = document.getElementById('greeting_tools_greeting_length_custom_wrapper');
+    if (wrapper) {
+        wrapper.classList.toggle('displayNone', lengthKey !== 'custom');
+    }
+}
+
+/**
+ * Shows or hides the custom title/description length inputs based on the selected length key.
+ * @param {string} lengthKey
+ */
+function updateTitleDescLengthCustomVisibility(lengthKey) {
+    const wrapper = document.getElementById('greeting_tools_title_desc_length_custom_wrapper');
+    if (wrapper) {
+        wrapper.classList.toggle('displayNone', lengthKey !== 'custom');
     }
 }
 
@@ -97,6 +214,35 @@ function applySettingsToUI() {
     if (replaceNamesToggle instanceof HTMLInputElement) {
         replaceNamesToggle.checked = settings.replaceNamesWithMacros;
     }
+
+    const greetingLengthSelect = document.getElementById('greeting_tools_greeting_length');
+    if (greetingLengthSelect instanceof HTMLSelectElement) {
+        greetingLengthSelect.value = settings.greetingLength ?? DEFAULT_GREETING_LENGTH;
+    }
+
+    const greetingLengthCustomInput = document.getElementById('greeting_tools_greeting_length_custom');
+    if (greetingLengthCustomInput instanceof HTMLInputElement) {
+        greetingLengthCustomInput.value = settings.greetingLengthCustom ?? '';
+    }
+
+    updateGreetingLengthCustomVisibility(settings.greetingLength ?? DEFAULT_GREETING_LENGTH);
+
+    const titleDescLengthSelect = document.getElementById('greeting_tools_title_desc_length');
+    if (titleDescLengthSelect instanceof HTMLSelectElement) {
+        titleDescLengthSelect.value = settings.titleDescLength ?? DEFAULT_TITLE_DESC_LENGTH;
+    }
+
+    const titleDescCustomTitleInput = document.getElementById('greeting_tools_title_desc_length_custom_title');
+    if (titleDescCustomTitleInput instanceof HTMLInputElement) {
+        titleDescCustomTitleInput.value = settings.titleDescLengthCustomTitle ?? '';
+    }
+
+    const titleDescCustomDescInput = document.getElementById('greeting_tools_title_desc_length_custom_description');
+    if (titleDescCustomDescInput instanceof HTMLInputElement) {
+        titleDescCustomDescInput.value = settings.titleDescLengthCustomDescription ?? '';
+    }
+
+    updateTitleDescLengthCustomVisibility(settings.titleDescLength ?? DEFAULT_TITLE_DESC_LENGTH);
 
     const generatePromptTextarea = document.getElementById('greeting_tools_generate_prompt');
     if (generatePromptTextarea instanceof HTMLTextAreaElement) {
@@ -135,6 +281,43 @@ function registerSettingsEventListeners() {
     document.getElementById('greeting_tools_replace_names')?.addEventListener('change', (e) => {
         if (e.target instanceof HTMLInputElement) {
             settings.replaceNamesWithMacros = e.target.checked;
+            saveSettingsDebounced();
+        }
+    });
+
+    document.getElementById('greeting_tools_greeting_length')?.addEventListener('change', (e) => {
+        if (e.target instanceof HTMLSelectElement) {
+            settings.greetingLength = /** @type {GreetingLengthKey} */ (e.target.value);
+            saveSettingsDebounced();
+            updateGreetingLengthCustomVisibility(settings.greetingLength);
+        }
+    });
+
+    document.getElementById('greeting_tools_greeting_length_custom')?.addEventListener('input', (e) => {
+        if (e.target instanceof HTMLInputElement) {
+            settings.greetingLengthCustom = e.target.value;
+            saveSettingsDebounced();
+        }
+    });
+
+    document.getElementById('greeting_tools_title_desc_length')?.addEventListener('change', (e) => {
+        if (e.target instanceof HTMLSelectElement) {
+            settings.titleDescLength = /** @type {TitleDescLengthKey} */ (e.target.value);
+            saveSettingsDebounced();
+            updateTitleDescLengthCustomVisibility(settings.titleDescLength);
+        }
+    });
+
+    document.getElementById('greeting_tools_title_desc_length_custom_title')?.addEventListener('input', (e) => {
+        if (e.target instanceof HTMLInputElement) {
+            settings.titleDescLengthCustomTitle = e.target.value;
+            saveSettingsDebounced();
+        }
+    });
+
+    document.getElementById('greeting_tools_title_desc_length_custom_description')?.addEventListener('input', (e) => {
+        if (e.target instanceof HTMLInputElement) {
+            settings.titleDescLengthCustomDescription = e.target.value;
             saveSettingsDebounced();
         }
     });
