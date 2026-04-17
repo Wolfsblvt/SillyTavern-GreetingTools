@@ -218,9 +218,10 @@ export async function generateGreetingContent(customPrompt, { loaderMessage, exi
  * @param {object} [options] - Generation options
  * @param {string} [options.existingTitles] - Already formatted existing titles string
  * @param {boolean} [options.showLoader=true] - Whether to show the blocking loader
+ * @param {AbortSignal | null} [options.signal] - Optional abort signal to cancel the generation
  * @returns {Promise<{ title: string, description: string } | null>} Generated title/desc or null on failure
  */
-export async function generateTitleAndDescription(greetingContent, { existingTitles, showLoader = true } = {}) {
+export async function generateTitleAndDescription(greetingContent, { existingTitles, showLoader = true, signal = null } = {}) {
     if (!greetingContent || greetingContent.trim().length === 0) {
         toastr.warning(t`Cannot generate without greeting content`);
         return null;
@@ -256,6 +257,7 @@ export async function generateTitleAndDescription(greetingContent, { existingTit
                 display.updateReasoning(update.reasoning);
                 display.updateContent(update.text);
             },
+            signal,
         });
 
         // For non-streaming: show reasoning if returned
@@ -419,9 +421,10 @@ export async function generateGreetingFlow({
  * @param {string} systemPrompt - The system prompt
  * @param {Object} [options]
  * @param {(update: StreamUpdate) => void} [options.onStream] - Callback for streaming updates. Enables streaming when provided and CMRS is used.
+ * @param {AbortSignal | null} [options.signal] - Optional abort signal to cancel the request
  * @returns {Promise<LLMResponse>} The LLM response with content and reasoning
  */
-async function callLLM(prompt, systemPrompt, { onStream } = {}) {
+async function callLLM(prompt, systemPrompt, { onStream, signal = null } = {}) {
     const profileId = greetingToolsSettings.connectionProfileId;
 
     if (profileId && isConnectionManagerAvailable()) {
@@ -437,7 +440,7 @@ async function callLLM(prompt, systemPrompt, { onStream } = {}) {
                     profileId,
                     messages,
                     CONNECTION_PROFILE_MAX_TOKENS,
-                    { extractData: true, includePreset: true, stream: true },
+                    { extractData: true, includePreset: true, stream: true, signal },
                 );
 
                 if (typeof streamResponse === 'function') {
@@ -460,21 +463,24 @@ async function callLLM(prompt, systemPrompt, { onStream } = {}) {
         }
 
         // Non-streaming path (default or fallback from failed streaming)
-        const response = await ConnectionManagerRequestService.sendRequest(
+        const response = /** @type {import('../../../../custom-request.js').ExtractedData} */ (await ConnectionManagerRequestService.sendRequest(
             profileId,
             messages,
             CONNECTION_PROFILE_MAX_TOKENS,
-            { extractData: true, includePreset: true, stream: false },
-        );
+            { extractData: true, includePreset: true, stream: false, signal },
+        ));
         return extractNonStreamingResponse(response);
     }
 
     // Fallback: generateRaw (no streaming, no reasoning available)
+    // generateRaw doesn't support AbortSignal, so check before and after
+    signal?.throwIfAborted();
     const result = await generateRaw({
         prompt,
         systemPrompt,
         instructOverride: true,
     });
+    signal?.throwIfAborted();
     return { content: result, reasoning: '' };
 }
 

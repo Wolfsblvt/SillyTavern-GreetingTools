@@ -81,6 +81,11 @@
     pointer-events: none;
 }
 
+/* Muted button state (still clickable, just visually subdued) */
+.greeting-tools-btn-muted {
+    opacity: 0.6;
+}
+
 .alternate_greetings_list.greeting-tools-list {
     overflow-y: auto;
 }

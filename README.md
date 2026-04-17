@@ -114,7 +114,7 @@ This is the roadmap of planned or suggested features that might make it into a f
 - [x] Stream generation of title/description if possible - also show thinking
 - [x] "Greeting Length" setting, instead of having to manually edit prompt
 - [ ] Uninstall hook with (optional) removal of any greeting data (including stored in character metadata)
-- [ ] Batch auto-fill titles for all greetings at once
+- [x] Batch auto-fill titles for all greetings at once
 - [ ] Slash commands to manage greetings, titles and descriptions
 - [ ] Greeting usage statistics (which greeting was used how often)
 

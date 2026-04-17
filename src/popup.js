@@ -14,6 +14,7 @@ import {
     textContainsNames,
     replaceNamesWithMacros,
 } from './generator.js';
+import { loader } from '../../../../action-loader.js';
 
 /** @typedef {import('./data.js').GreetingToolsData} GreetingToolsData */
 
@@ -41,6 +42,18 @@ import {
  * @property {() => void | Promise<void>} save - Persists metadata changes
  * @property {(list?: HTMLElement) => void} refreshUI - Refreshes the UI after state changes
  */
+
+/**
+ * Enum for batch auto-fill popup result modes.
+ * Values are custom popup result codes (≥2 to avoid colliding with POPUP_RESULT).
+ * @readonly
+ * @enum {number}
+ */
+const BATCH_AUTO_FILL_MODE = {
+    MISSING: 2,
+    INCOMPLETE: 3,
+    ALL: 4,
+};
 
 /**
  * Class that manages the Greeting Tools popup UI.
@@ -448,6 +461,7 @@ export class GreetingToolsPopup {
             }
             countSpan.textContent = text;
         }
+        this.#updateBatchAutoFillButtonState();
     }
 
     /**
@@ -1050,6 +1064,12 @@ export class GreetingToolsPopup {
             collapseAllBtn.addEventListener('click', () => this.#setAllGreetingsExpanded(false));
         }
 
+        // Batch auto-fill button handler
+        const batchAutoFillBtn = this.#template.querySelector('.greeting-tools-batch-auto-fill');
+        if (batchAutoFillBtn) {
+            batchAutoFillBtn.addEventListener('click', () => this.#handleBatchAutoFill(list));
+        }
+
         // Generate new greeting button handler
         const generateBtn = this.#template.querySelector('.greeting-tools-generate');
         if (generateBtn) {
@@ -1390,6 +1410,7 @@ export class GreetingToolsPopup {
         const updated = await this.#performAutoFill(state);
         if (updated) {
             onSave();
+            this.#updateBatchAutoFillButtonState();
         }
     }
 
@@ -1438,6 +1459,7 @@ export class GreetingToolsPopup {
             state.title = result.trim();
             state.description = String(popup.inputResults?.get('greeting-description-input') ?? '').trim();
             onSave();
+            this.#updateBatchAutoFillButtonState();
         }
     }
 
@@ -1654,6 +1676,230 @@ export class GreetingToolsPopup {
         const textarea = block?.querySelector('.greeting-tools-textarea');
         if (textarea instanceof HTMLTextAreaElement) {
             textarea.focus();
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Batch Auto-Fill
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Checks whether all greeting states (main + alt) have both title and description.
+     * @returns {boolean}
+     */
+    #allGreetingsComplete() {
+        const states = [this.#mainState, ...this.#altStates].filter(Boolean);
+        return states.length > 0 && states.every(s => s.title && s.description);
+    }
+
+    /**
+     * Updates the batch auto-fill toolbar button's visual state.
+     * Shows a muted appearance when all greetings already have titles and descriptions,
+     * but keeps the button clickable for "Regenerate all".
+     */
+    #updateBatchAutoFillButtonState() {
+        if (!this.#template) return;
+        const btn = this.#template.querySelector('.greeting-tools-batch-auto-fill');
+        if (btn instanceof HTMLElement) {
+            btn.classList.toggle('greeting-tools-btn-muted', this.#allGreetingsComplete());
+        }
+    }
+
+    /**
+     * Shows a decision popup for the batch auto-fill operation.
+     * Offers three modes and an optional "ask before replacing" checkbox.
+     * @returns {Promise<{mode: number, askBeforeReplace: boolean} | null>} The selected options or null if cancelled
+     */
+    async #showBatchAutoFillPopup() {
+        const allStates = /** @type {GreetingEditorState[]} */ ([this.#mainState, ...this.#altStates].filter(Boolean));
+        const incompleteCount = allStates.filter(s => !s.title || !s.description).length;
+        const totalCount = allStates.length;
+
+        const container = document.createElement('div');
+        container.classList.add('flex-container', 'flexFlowColumn', 'gap10');
+
+        const header = document.createElement('h3');
+        header.textContent = t`Batch Auto-Fill Greetings`;
+        container.appendChild(header);
+
+        const description = document.createElement('p');
+        description.textContent = t`Generate titles and descriptions for your greetings using AI.`;
+        container.appendChild(description);
+
+        const info = document.createElement('small');
+        info.style.opacity = '0.8';
+        if (incompleteCount > 0) {
+            info.textContent = t`${incompleteCount} of ${totalCount} greetings are missing a title or description.`;
+        } else {
+            info.textContent = t`All greetings already have titles and descriptions.`;
+        }
+        container.appendChild(info);
+
+        /** @type {import('../../../../popup.js').CustomPopupButton[]} */
+        const buttons = [];
+
+        if (incompleteCount > 0) {
+            buttons.push({
+                text: t`Fill missing` + ` (${incompleteCount})`,
+                icon: 'fa-fill-drip',
+                result: BATCH_AUTO_FILL_MODE.MISSING,
+                tooltip: t`Only fill empty title/description fields. Existing data is never touched.`,
+                classes: ['popup-button-ok'], // color red as default
+            });
+            buttons.push({
+                text: t`Regenerate incomplete` + ` (${incompleteCount})`,
+                icon: 'fa-rotate',
+                result: BATCH_AUTO_FILL_MODE.INCOMPLETE,
+                tooltip: t`Regenerate both title and description for every greeting that is missing either field.`,
+            });
+        }
+
+        buttons.push({
+            text: t`Regenerate all` + ` (${totalCount})`,
+            icon: 'fa-arrows-rotate',
+            result: BATCH_AUTO_FILL_MODE.ALL,
+            tooltip: t`Regenerate title and description for every greeting, replacing any existing data.`,
+            classes: incompleteCount > 0 ? [] : ['popup-button-ok'],
+        });
+
+        const popup = new Popup(container, POPUP_TYPE.TEXT, '', {
+            wider: true,
+            okButton: false,
+            cancelButton: t`Cancel`,
+            customButtons: buttons,
+            customInputs: [{
+                id: 'batch-ask-replace',
+                label: t`Ask before replacing existing data`,
+                type: 'checkbox',
+                defaultState: false,
+                tooltip: t`Show a confirmation before overwriting existing titles or descriptions. Does not apply to "Fill missing".`,
+            }],
+            defaultResult: incompleteCount > 0 ? BATCH_AUTO_FILL_MODE.MISSING : BATCH_AUTO_FILL_MODE.ALL,
+        });
+
+        const result = await popup.show();
+        const askBeforeReplace = !!popup.inputResults?.get('batch-ask-replace');
+
+        if (result === BATCH_AUTO_FILL_MODE.MISSING || result === BATCH_AUTO_FILL_MODE.INCOMPLETE || result === BATCH_AUTO_FILL_MODE.ALL) {
+            return { mode: result, askBeforeReplace };
+        }
+        return null;
+    }
+
+    /**
+     * Handles the batch auto-fill operation.
+     * Shows a decision popup, then processes greetings sequentially with progress tracking.
+     * @param {HTMLElement} list - The greeting list container
+     */
+    async #handleBatchAutoFill(list) {
+        const options = await this.#showBatchAutoFillPopup();
+        if (!options) return;
+
+        const { mode, askBeforeReplace } = options;
+
+        const allStates = /** @type {GreetingEditorState[]} */ ([this.#mainState, ...this.#altStates].filter(Boolean));
+        const toProcess = mode === BATCH_AUTO_FILL_MODE.ALL
+            ? allStates
+            : allStates.filter(s => !s.title || !s.description);
+
+        if (toProcess.length === 0) {
+            toastr.info(t`All greetings already have titles and descriptions`);
+            return;
+        }
+
+        let cancelled = false;
+        let completed = 0;
+        const abortController = new AbortController();
+
+        // Outer blocking handle (overlay only, no toast)
+        const outerHandle = loader.show({ toastMode: loader.ToastMode.NONE });
+        /** @type {import('../../../../action-loader.js').ActionLoaderHandle | null} */
+        let stepHandle = null;
+
+        // Build existing titles incrementally for context diversity
+        let existingTitles = this.#getAllExistingTitles();
+
+        try {
+            for (let i = 0; i < toProcess.length; i++) {
+                if (cancelled) break;
+
+                // Update progress toast (replace previous step's toast)
+                if (stepHandle) await stepHandle.hide();
+                stepHandle = loader.show({
+                    blocking: false,
+                    message: t`Auto-filling ${i + 1}/${toProcess.length} greetings...`,
+                    toastMode: loader.ToastMode.STOPPABLE,
+                    onStop: () => { cancelled = true; abortController.abort(); },
+                });
+
+                const state = toProcess[i];
+
+                // Skip greetings with no content (can't generate from nothing)
+                if (!state.content?.trim()) {
+                    console.log(`[GreetingTools] Skipping empty greeting "${state.id}" in batch auto-fill`);
+                    continue;
+                }
+
+                const generated = await generateTitleAndDescription(state.content, {
+                    existingTitles,
+                    showLoader: false,
+                    signal: abortController.signal,
+                });
+
+                if (!generated) continue;
+
+                // Determine which fields to apply based on mode
+                // MISSING: only fill empty fields; INCOMPLETE/ALL: fill both
+                let applyTitle = mode !== BATCH_AUTO_FILL_MODE.MISSING || !state.title;
+                let applyDesc = mode !== BATCH_AUTO_FILL_MODE.MISSING || !state.description;
+
+                // Ask before overwriting existing fields when checkbox is on (not relevant for MISSING)
+                if (askBeforeReplace && mode !== BATCH_AUTO_FILL_MODE.MISSING) {
+                    const replacingTitle = applyTitle && !!state.title;
+                    const replacingDesc = applyDesc && !!state.description;
+
+                    if (replacingTitle || replacingDesc) {
+                        const confirmed = await this.#showReplacePreview(
+                            state.title, state.description,
+                            generated.title, generated.description,
+                            replacingTitle, replacingDesc,
+                        );
+                        if (!confirmed) {
+                            // User rejected replacement — fall back to only filling empty fields
+                            applyTitle = applyTitle && !state.title;
+                            applyDesc = applyDesc && !state.description;
+                        }
+                    }
+                }
+
+                if (applyTitle) state.title = generated.title;
+                if (applyDesc) state.description = generated.description;
+                if (applyTitle || applyDesc) completed++;
+
+                // Grow context so subsequent titles stay diverse
+                if (generated.title) {
+                    existingTitles += (existingTitles ? '\n' : '') + `- ${generated.title}`;
+                }
+            }
+        } finally {
+            if (stepHandle) await stepHandle.hide();
+            await outerHandle.hide();
+        }
+
+        // Persist all changes immediately
+        await this.#saveAllMetadata();
+
+        // Refresh UI
+        this.#renderMainGreeting();
+        this.#renderGreetingsList(list);
+
+        // Result toast
+        if (cancelled && completed > 0) {
+            toastr.info(t`Batch auto-fill stopped. ${completed}/${toProcess.length} greetings filled.`);
+        } else if (cancelled) {
+            toastr.info(t`Batch auto-fill cancelled.`);
+        } else {
+            toastr.success(t`Batch auto-fill complete. ${completed} greeting${completed !== 1 ? 's' : ''} filled.`);
         }
     }
 
