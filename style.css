@@ -1,5 +1,20 @@
 /* SillyTavern-GreetingTools Styles */
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   Extension Settings Panel
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Spacing between settings sections */
+.greeting-tools-settings-section + .greeting-tools-settings-section {
+    margin-top: 12px;
+    padding-top: 12px;
+    /* border-top: 1px solid var(--SmartThemeBorderColor); */
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Greeting Tools Popup
+   ───────────────────────────────────────────────────────────────────────────── */
+
 /* Greyed out index number when custom title is set */
 .greeting-tools-index {
     font-weight: normal;

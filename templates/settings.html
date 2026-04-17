@@ -5,7 +5,7 @@
             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
         </div>
         <div class="inline-drawer-content">
-            <div class="flex-container flexFlowColumn">
+            <div id="greeting_tools_main_settings" class="greeting-tools-settings-section flex-container flexFlowColumn">
                 <label class="checkbox_label" for="greeting_tools_collapse_by_default">
                     <input type="checkbox" id="greeting_tools_collapse_by_default" />
                     <span data-i18n="Collapse greetings by default inside Greeting Tools">Collapse greetings by default inside Greeting Tools</span>
@@ -17,6 +17,19 @@
                         <small class="notes" data-i18n="Replaces character/user names with &lcub;&lcub;char&rcub;&rcub; and &lcub;&lcub;user&rcub;&rcub;">Replaces character/user names with &lcub;&lcub;char&rcub;&rcub; and &lcub;&lcub;user&rcub;&rcub;</small>
                     </div>
                 </label>
+            </div>
+            <div id="greeting_tools_connection_profile_wrapper" class="greeting-tools-settings-section flex-container flexFlowColumn" style="display: none;">
+                <label for="greeting_tools_connection_profile">
+                    <span data-i18n="Connection Profile for Generation">Connection Profile for Generation</span>
+                </label>
+                <select id="greeting_tools_connection_profile" class="text_pole">
+                    <option value="" data-i18n="Default (Main Model)">Default (Main Model)</option>
+                </select>
+                <small class="notes">
+                    <span data-i18n="Use a separate connection profile for greeting generation instead of the main model. Requires Connection Manager to be enabled.">Use a separate connection profile for greeting generation instead of the main model. Requires Connection Manager to be enabled.</span>
+                </small>
+            </div>
+            <div id="greeting_tools_gen_settings" class="greeting-tools-settings-section flex-container flexFlowColumn">
                 <div class="flex-container flexFlowColumn gap5">
                     <label for="greeting_tools_greeting_length" data-i18n="Greeting Length">Greeting Length</label>
                     <small class="notes" data-i18n="Controls how long generated greetings should be.">Controls how long generated greetings should be.</small>
@@ -49,7 +62,7 @@
                     </div>
                 </div>
             </div>
-            <div class="inline-drawer marginTop5">
+            <div id="greeting_tools_prompt_templates_wrapper" class="greeting-tools-settings-section inline-drawer">
                 <div class="inline-drawer-toggle inline-drawer-header">
                     <b data-i18n="Greeting Tool Prompt Templates">Greeting Tool Prompt Templates</b>
                     <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
