@@ -207,7 +207,7 @@ export async function generateGreetingContent(customPrompt, { loaderMessage, exi
         toastr.error(t`Failed to generate greeting`);
         return null;
     } finally {
-        display.hide();
+        display.complete({ label: 'Generated Greeting' }); // Green LED, auto-hide after default delay
         await greetingLoader.hide();
     }
 }
@@ -310,7 +310,7 @@ export async function generateTitleAndDescription(greetingContent, { existingTit
         }
         return null;
     } finally {
-        display.hide();
+        display.complete({ label: 'Generated Greeting' }); // Green LED, auto-hide after default delay
         await genLoader?.hide();
     }
 }
