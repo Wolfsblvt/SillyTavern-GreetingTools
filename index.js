@@ -1,3 +1,4 @@
+import { cleanAllGreetingToolsData } from './src/clean.js';
 import { setupButtonIntercept } from './src/popup.js';
 import { initGreetingSelector } from './src/selector.js';
 import { initSettings, injectSettingsUI } from './src/settings.js';
@@ -34,6 +35,16 @@ export async function init() {
     console.debug(`[${EXTENSION_NAME}] Extension activated`);
 
     initialized = true;
+}
+
+/**
+ * Extension clean hook — called when the extension is uninstalled.
+ * Removes extension settings and per-character greeting metadata.
+ */
+export async function clean() {
+    console.debug(`[${EXTENSION_NAME}] Running clean hook...`);
+    await cleanAllGreetingToolsData();
+    console.debug(`[${EXTENSION_NAME}] Clean complete.`);
 }
 
 // TODO: This function is needed as long as the experimental macro engine can be off

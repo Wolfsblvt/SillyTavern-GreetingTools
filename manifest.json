@@ -9,6 +9,7 @@
     "version": "1.0.1",
     "homePage": "https://github.com/Wolfsblvt/SillyTavern-GreetingTools",
     "hooks": {
-        "activate": "init"
+        "activate": "init",
+        "clean": "clean"
     }
 }
