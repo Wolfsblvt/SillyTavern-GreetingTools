@@ -148,13 +148,13 @@ export async function generateGreetingContent(customPrompt, { loaderMessage, exi
     };
 
     // Substitute macros in system prompt (uses customizable prompt from settings)
-    const systemPrompt = substituteParams(greetingToolsSettings.generateGreetingSystemPrompt, undefined, undefined, dynamicMacros);
+    const systemPrompt = substituteParams(greetingToolsSettings.generateGreetingSystemPrompt, { dynamicMacros });
 
     // Use configurable prompts from settings
     const promptTemplate = customPrompt
         ? greetingToolsSettings.generationPromptWithTheme
         : greetingToolsSettings.generationPromptWithoutTheme;
-    const prompt = substituteParams(promptTemplate, undefined, undefined, dynamicMacros);
+    const prompt = substituteParams(promptTemplate, { dynamicMacros });
 
     const greetingLoader = loader.show({
         message: loaderMessage || t`Generating new greeting...`,
@@ -223,7 +223,7 @@ export async function generateTitleAndDescription(greetingContent, { existingTit
         existingTitles: titles,
     };
 
-    const systemPrompt = substituteParams(greetingToolsSettings.generateSystemPrompt, undefined, undefined, dynamicMacros);
+    const systemPrompt = substituteParams(greetingToolsSettings.generateSystemPrompt, { dynamicMacros });
     const prompt = greetingContent;
 
     const genLoader = showLoader
