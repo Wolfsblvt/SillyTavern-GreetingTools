@@ -138,7 +138,11 @@ export function getAllExistingTitles(chid = this_chid) {
 export async function generateGreetingContent(customPrompt, { loaderMessage, existingTitles: providedTitles } = {}) {
     // Build dynamic macros
     const existingTitles = providedTitles ?? getAllExistingTitles();
+    const character = characters[this_chid];
     const dynamicMacros = {
+        charDescription: character?.description || '',
+        charPersonality: character?.personality || '',
+        scenario: character?.scenario || '',
         existingTitles,
         customPrompt: customPrompt || '',
     };
