@@ -20,22 +20,22 @@ Your task is to generate a short, memorable **title** and a brief **description*
   - **DO NOT** start with "This greeting..." or similar phrase
 - Output **ONLY** the title and description in the exact format shown below
 
-{{#if charDescription}}
+{{#if {{charDescription}}}}
 ## Character Description (for context)
 {{charDescription}}
 
 {{/if}}
-{{#if charPersonality}}
+{{#if {{charPersonality}}}}
 ## Character Personality
 {{charPersonality}}
 
 {{/if}}
-{{#if scenario}}
+{{#if {{scenario}}}}
 ## Scenario
 {{scenario}}
 
 {{/if}}
-{{#if existingTitles}}
+{{#if {{existingTitles}}}}
 ## Existing Greeting Titles (avoid identical or too similar names)
 {{existingTitles}}
 
@@ -63,28 +63,28 @@ Write a compelling, immersive **first message** that establishes an interesting 
 - Be detailed enough to give {{user}} something to respond to
 - Include scene-setting, actions, dialogue, or inner thoughts as appropriate
 
-{{#if charDescription}}
+{{#if {{charDescription}}}}
 ## Character Description
 {{charDescription}}
 
 {{/if}}
-{{#if charPersonality}}
+{{#if {{charPersonality}}}}
 ## Character Personality
 {{charPersonality}}
 
 {{/if}}
-{{#if scenario}}
+{{#if {{scenario}}}}
 ## Base Scenario
 {{scenario}}
 
 {{/if}}
-{{#if existingTitles}}
+{{#if {{existingTitles}}}}
 ## Existing Greeting Themes (try to create something different)
 The following greetings already exist. Try to create a unique scenario that differs from these:
 {{existingTitles}}
 
 {{/if}}
-{{#if customPrompt}}
+{{#if {{customPrompt}}}}
 ## Special Instructions
 The user has requested the following specific theme or scenario for this greeting:
 
