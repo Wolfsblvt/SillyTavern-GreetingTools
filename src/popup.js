@@ -1137,6 +1137,11 @@ export class GreetingToolsPopup {
                 titles.push(alt.title);
             }
         }
+        for (const temp of this.#tempStates) {
+            if (temp.id !== state.id && temp.title) {
+                titles.push(temp.title);
+            }
+        }
         return titles.length > 0 ? titles.map(t => `- ${t}`).join('\n') : '';
     }
 
@@ -1590,6 +1595,11 @@ export class GreetingToolsPopup {
         for (const alt of this.#altStates) {
             if (alt.title) {
                 titles.push(alt.title);
+            }
+        }
+        for (const temp of this.#tempStates) {
+            if (temp.title) {
+                titles.push(temp.title);
             }
         }
         return titles.length > 0 ? titles.map(t => `- ${t}`).join('\n') : '';

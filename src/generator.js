@@ -8,7 +8,7 @@ import { Popup, POPUP_TYPE } from '../../../../popup.js';
 import { t } from '../../../../i18n.js';
 import { escapeRegex } from '../../../../utils.js';
 import { greetingToolsSettings } from './settings.js';
-import { getGreetingToolsData, generateGreetingId } from './data.js';
+import { getGreetingToolsData, generateGreetingId, getTempGreetings } from './data.js';
 import { loader } from '/scripts/action-loader.js';
 
 /** Default placeholder text for the generate greeting popup */
@@ -101,7 +101,8 @@ function applyConditionalBlocks(template, macros) {
             value ? '$1' : '',
         );
     }
-    return result;
+    // Collapse runs of 3+ newlines left behind by removed blocks
+    return result.replace(/\n{3,}/g, '\n\n');
 }
 
 /**
@@ -142,6 +143,12 @@ export function getAllExistingTitles(chid = this_chid) {
         const greeting = metadata.greetings[greetingId];
         if (greeting?.title) {
             titles.push(greeting.title);
+        }
+    }
+
+    for (const [, tempData] of getTempGreetings()) {
+        if (tempData?.title) {
+            titles.push(tempData.title);
         }
     }
 
