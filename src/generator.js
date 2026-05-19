@@ -84,6 +84,27 @@ export function textContainsNames(text) {
 }
 
 /**
+ * Pre-processes {{#if key}}...{{/if}} blocks in a template using dynamic macro
+ * values. The experimental macro engine's {{if}} macro only auto-resolves 
+ * registered macros as conditions, not dynamic macros — so we handle the 
+ * conditional blocks ourselves before calling substituteParams.
+ * @param {string} template - The template string to process
+ * @param {Record<string, string>} macros - Dynamic macro key-value pairs
+ * @returns {string} Template with conditional blocks resolved
+ */
+function applyConditionalBlocks(template, macros) {
+    let result = template;
+    for (const [key, value] of Object.entries(macros)) {
+        const escapedKey = escapeRegex(key);
+        result = result.replace(
+            new RegExp(`\\{\\{#?if\\s+${escapedKey}\\}\\}([\\s\\S]*?)\\{\\{/if\\}\\}`, 'g'),
+            value ? '$1' : '',
+        );
+    }
+    return result;
+}
+
+/**
  * Replaces character and user names with macros in the given text (case-sensitive, whole word).
  * @param {string} text - The text to process
  * @returns {string} Text with names replaced by macros
@@ -147,14 +168,14 @@ export async function generateGreetingContent(customPrompt, { loaderMessage, exi
         customPrompt: customPrompt || '',
     };
 
-    // Substitute macros in system prompt (uses customizable prompt from settings)
-    const systemPrompt = substituteParams(greetingToolsSettings.generateGreetingSystemPrompt, { dynamicMacros });
+    // Pre-process {{#if key}} blocks, then substitute remaining macros
+    const systemPrompt = substituteParams(applyConditionalBlocks(greetingToolsSettings.generateGreetingSystemPrompt, dynamicMacros), { dynamicMacros });
 
     // Use configurable prompts from settings
     const promptTemplate = customPrompt
         ? greetingToolsSettings.generationPromptWithTheme
         : greetingToolsSettings.generationPromptWithoutTheme;
-    const prompt = substituteParams(promptTemplate, { dynamicMacros });
+    const prompt = substituteParams(applyConditionalBlocks(promptTemplate, dynamicMacros), { dynamicMacros });
 
     const greetingLoader = loader.show({
         message: loaderMessage || t`Generating new greeting...`,
@@ -223,7 +244,7 @@ export async function generateTitleAndDescription(greetingContent, { existingTit
         existingTitles: titles,
     };
 
-    const systemPrompt = substituteParams(greetingToolsSettings.generateSystemPrompt, { dynamicMacros });
+    const systemPrompt = substituteParams(applyConditionalBlocks(greetingToolsSettings.generateSystemPrompt, dynamicMacros), { dynamicMacros });
     const prompt = greetingContent;
 
     const genLoader = showLoader
